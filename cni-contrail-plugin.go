@@ -10,7 +10,6 @@ import (
 	"runtime"
 	"strconv"
 
-	"github.com/pedro-r-marques/packnet/pkg/network"
 	"github.com/vishvananda/netlink"
 
 	ippkg "github.com/containernetworking/cni/pkg/ip"
@@ -420,9 +419,6 @@ func cmdDel(args *skel.CmdArgs) error {
 		log.Print(err.Error())
 		return err
 	}
-
-	nsMan := network.NewNetnsManager()
-	nsMan.DeleteInterface(args.ContainerID)
 
 	return nil
 }
