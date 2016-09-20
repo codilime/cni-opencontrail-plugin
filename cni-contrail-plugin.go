@@ -17,6 +17,7 @@ import (
 	"github.com/containernetworking/cni/pkg/ns"
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
+	"github.com/containernetworking/cni/pkg/version"
 )
 
 const (
@@ -433,7 +434,7 @@ func main() {
 		"CNI: "+os.Getenv("CNI_CONTAINERID")+": ",
 		logg.Ldate|logg.Ltime|logg.Lshortfile)
 
-	skel.PluginMain(cmdAdd, cmdDel)
+	skel.PluginMain(cmdAdd, cmdDel, version.Legacy)
 
 	log.Printf("DONE!")
 	f.Close()
