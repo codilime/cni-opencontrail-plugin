@@ -22,7 +22,7 @@ import (
 
 const (
 	defaultProject        = "default-project"
-	defaultPublicSubnet   = "172.17.0.0/16"
+	defaultPublicSubnet   = "172.31.0.0/16"
 	defaultPrivateSubnet  = "10.32.0.0/16"
 	defaultServiceSubnet  = "10.64.0.0/16"
 	defaultPrivateNetwork = "default-network"
@@ -42,6 +42,7 @@ type NetConf struct {
 	types.NetConf
 	ContrailServer  string   `json:"opencontrail_server"`
 	ContrailPort    int      `json:"opencontrail_port"`
+	VrouterPort     int      `json:"vrouter_port"`
 	Project         string   `json:"project"`
 	PublicNetwork   string   `json:"public_network"`
 	PublicSubnet    string   `json:"public_subnet"`
@@ -50,8 +51,6 @@ type NetConf struct {
 	MTU             int      `json:"mtu"`
 	ContrailCliCmd  string   `json:"contrail_cli_cmd"`
 	ContrailCliArgs []string `json:"contrail_cli_args"`
-	VRouterCtlCmd   string   `json:"vrouter_ctl_cmd"`
-	VRouterCtlArgs  []string `json:"vrouter_ctl_args"`
 	Args            struct {
 		OrgApacheMesos struct {
 			NetworkInfo struct {
@@ -129,8 +128,22 @@ func labelsToMap(labels []Label) (ret map[string]string) {
 	return
 }
 
-func runContrailCliPy(netConf *NetConf, args ...string) ([]byte, error) {
-	cmd_args := append(netConf.ContrailCliArgs, netConf.ContrailServer, strconv.Itoa(netConf.ContrailPort))
+func runControlCli(netConf *NetConf, args ...string) ([]byte, error) {
+	cmd_args := append(
+		netConf.ContrailCliArgs,
+		"control",
+		netConf.ContrailServer,
+		strconv.Itoa(netConf.ContrailPort))
+	cmd_args = append(cmd_args, args...)
+	cmd := exec.Command(netConf.ContrailCliCmd, cmd_args...)
+	out, err := cmd.CombinedOutput()
+	return out, err
+}
+
+func runVrouterCli(netConf *NetConf, args ...string) ([]byte, error) {
+	cmd_args := append(netConf.ContrailCliArgs,
+		"vrouter",
+		strconv.Itoa(netConf.VrouterPort))
 	cmd_args = append(cmd_args, args...)
 	cmd := exec.Command(netConf.ContrailCliCmd, cmd_args...)
 	out, err := cmd.CombinedOutput()
@@ -138,7 +151,7 @@ func runContrailCliPy(netConf *NetConf, args ...string) ([]byte, error) {
 }
 
 func createVirtualNetwork(netConf *NetConf, name string, subnet string) (string, error) {
-	output, err := runContrailCliPy(
+	output, err := runControlCli(
 		netConf,
 		"network_create",
 		name,
@@ -152,13 +165,27 @@ func createVirtualNetwork(netConf *NetConf, name string, subnet string) (string,
 	return uuid, nil
 }
 
+func createProject(netConf *NetConf) (string, error) {
+	output, err := runControlCli(
+		netConf,
+		"project_create",
+		netConf.Project,
+		"default-domain")
+	if err != nil {
+		return "", fmt.Errorf("Cannot create project '%s': %v: %s", netConf.Project, err, string(output))
+	}
+	uuid := string(output)
+	log.Printf("Project created: %s", uuid)
+	return uuid, nil
+}
+
 func allocFloatingIP(project string, name string, network string) (string, error) {
 	log.Printf("Create floating ip '%s:%s:%s'\n", project, network, name)
 	return "0.0.0.0", nil
 }
 
 func createContainer(netConf *NetConf, name string, network string, ip string) (*ContainerData, error) {
-	output, err := runContrailCliPy(
+	output, err := runControlCli(
 		netConf,
 		"container_create",
 		name,
@@ -181,7 +208,7 @@ func createContainer(netConf *NetConf, name string, network string, ip string) (
 }
 
 func allocInstanceIp(netConf *NetConf, network string) (*types.Result, error) {
-	output, err := runContrailCliPy(
+	output, err := runControlCli(
 		netConf,
 		"instance_ip_alloc",
 		network,
@@ -238,6 +265,22 @@ func allocInstanceIp(netConf *NetConf, network string) (*types.Result, error) {
 	}, nil
 }
 
+func VrouterAddPort(netConf *NetConf, name string, data *ContainerData, networkId string, ifaceName string) error {
+	output, err := runVrouterCli(
+		netConf,
+		"port_add",
+		name,
+		data.MachineId,
+		data.InterfaceId,
+		networkId,
+		ifaceName,
+		data.Mac)
+	if err != nil {
+		return fmt.Errorf("Cannot add port to vrouter: %v: %s", err, string(output))
+	}
+	return nil
+}
+
 func cmdAdd(args *skel.CmdArgs) error {
 	log.Print("ADD")
 
@@ -252,6 +295,13 @@ func cmdAdd(args *skel.CmdArgs) error {
 		netConf.Args.OrgApacheMesos.NetworkInfo.Labels.Labels)
 	log.Printf("LABELS = %v\n", labels)
 
+	// Create Project
+	_, err = createProject(netConf)
+	if err != nil {
+		log.Print(err.Error())
+		return err
+	}
+
 	// Get private network name
 	networkName, ok := labels["network"]
 	if !ok {
@@ -264,7 +314,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 		log.Print(err.Error())
 		return err
 	}
-	_, err = createVirtualNetwork(netConf, networkName, netConf.PrivateSubnet)
+	networkId, err := createVirtualNetwork(netConf, networkName, netConf.PrivateSubnet)
 	if err != nil {
 		log.Print(err.Error())
 		return err
@@ -307,19 +357,19 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 	log.Printf("Virtual interface %s created.", hostInterfaceName)
 
-	cmd_args := append(netConf.VRouterCtlArgs,
-		"--mac-address", containerData.Mac,
-		"--vm", containerData.MachineId,
-		"--vmi", containerData.InterfaceId,
-		"--interface", hostInterfaceName,
-		"add", args.ContainerID)
-	cmd := exec.Command(netConf.VRouterCtlCmd, cmd_args...)
-	out, err := cmd.CombinedOutput()
+	// Add port to VRouter
+	err = VrouterAddPort(
+		netConf,
+		args.ContainerID,
+		containerData,
+		networkId,
+		hostInterfaceName)
 	if err != nil {
-		log.Print(err.Error() + ": " + string(out))
-		return fmt.Errorf("vouter_ctl failed: %s: %s", err.Error(), string(out))
+		log.Print(err.Error())
+		return err
 	}
 
+	// Configure interface
 	err = netns.Do(func(_ ns.NetNS) error {
 		err := ipam.ConfigureIface(args.IfName, ipamResult)
 		if err != nil {
@@ -410,10 +460,8 @@ func cmdDel(args *skel.CmdArgs) error {
 		return err
 	}
 
-	var ipn *net.IPNet
 	err = ns.WithNetNSPath(args.Netns, func(_ ns.NetNS) error {
-		var err error
-		ipn, err = ippkg.DelLinkByNameAddr(args.IfName, netlink.FAMILY_V4)
+		_, err = ippkg.DelLinkByNameAddr(args.IfName, netlink.FAMILY_V4)
 		return err
 	})
 	if err != nil {
