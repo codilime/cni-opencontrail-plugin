@@ -66,6 +66,7 @@ type ContainerData struct {
 	InterfaceId string
 	MachineId   string
 	Mac         string
+	IP          string
 }
 
 type IpData struct {
@@ -207,11 +208,32 @@ func createContainer(netConf *NetConf, name string, network string, ip string) (
 	return data, nil
 }
 
+func deleteContainer(netConf *NetConf, name string, network string) (*ContainerData, error) {
+	output, err := runControlCli(
+		netConf,
+		"container_delete",
+		name,
+		"default-domain:"+netConf.Project,
+		network)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"Cannot delete instance '%s' in network '%s': %v: %s",
+			name, network, err, string(output))
+	}
+	log.Printf("Instance deleted: %s", string(output))
+
+	data := &ContainerData{}
+	err = json.Unmarshal(output, data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse ContainerData: %v", err)
+	}
+	return data, nil
+}
+
 func allocInstanceIp(netConf *NetConf, network string) (*types.Result, error) {
 	output, err := runControlCli(
 		netConf,
 		"instance_ip_alloc",
-		network,
 		"default-domain:"+netConf.Project,
 		network,
 		netConf.PrivateSubnet)
@@ -265,6 +287,23 @@ func allocInstanceIp(netConf *NetConf, network string) (*types.Result, error) {
 	}, nil
 }
 
+func freeInstanceIp(netConf *NetConf, network string, ip string) error {
+	output, err := runControlCli(
+		netConf,
+		"instance_ip_free",
+		"default-domain:"+netConf.Project,
+		network,
+		netConf.PrivateSubnet,
+		ip)
+	if err != nil {
+		return fmt.Errorf(
+			"Cannot free instance ip in network '%s': %v: %s",
+			network, err, string(output))
+	}
+	log.Printf("Instance ip freed: %s", string(output))
+	return nil
+}
+
 func VrouterAddPort(netConf *NetConf, name string, data *ContainerData, networkId string, ifaceName string) error {
 	output, err := runVrouterCli(
 		netConf,
@@ -281,6 +320,14 @@ func VrouterAddPort(netConf *NetConf, name string, data *ContainerData, networkI
 	return nil
 }
 
+func VrouterDelPort(netConf *NetConf, interfaceId string) error {
+	output, err := runVrouterCli(netConf, "port_del", interfaceId)
+	if err != nil {
+		return fmt.Errorf("Cannot delete port from vrouter: %v: %s", err, string(output))
+	}
+	return nil
+}
+
 func cmdAdd(args *skel.CmdArgs) error {
 	log.Print("ADD")
 
@@ -290,17 +337,17 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return err
 	}
 
-	// Process NetworkInfo labels
-	labels := labelsToMap(
-		netConf.Args.OrgApacheMesos.NetworkInfo.Labels.Labels)
-	log.Printf("LABELS = %v\n", labels)
-
 	// Create Project
 	_, err = createProject(netConf)
 	if err != nil {
 		log.Print(err.Error())
 		return err
 	}
+
+	// Process NetworkInfo labels
+	labels := labelsToMap(
+		netConf.Args.OrgApacheMesos.NetworkInfo.Labels.Labels)
+	log.Printf("Labels: %v\n", labels)
 
 	// Get private network name
 	networkName, ok := labels["network"]
@@ -337,7 +384,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 		networkName,
 		ipamResult.IP4.IP.IP.String())
 	if err != nil {
-		log.Print(err)
+		log.Print(err.Error())
 		return err
 	}
 
@@ -454,19 +501,55 @@ func cmdAdd(args *skel.CmdArgs) error {
 func cmdDel(args *skel.CmdArgs) error {
 	log.Print("DEL")
 
-	_, err := loadNetConf(args.StdinData)
+	netConf, err := loadNetConf(args.StdinData)
 	if err != nil {
 		log.Print(err.Error())
 		return err
 	}
 
+	// Process NetworkInfo labels
+	labels := labelsToMap(
+		netConf.Args.OrgApacheMesos.NetworkInfo.Labels.Labels)
+	log.Printf("Labels: %v\n", labels)
+
+	// Get private network name
+	networkName, ok := labels["network"]
+	if !ok {
+		networkName = defaultPrivateNetwork
+	}
+
+	// Delete veth interfaces
 	err = ns.WithNetNSPath(args.Netns, func(_ ns.NetNS) error {
 		_, err = ippkg.DelLinkByNameAddr(args.IfName, netlink.FAMILY_V4)
 		return err
 	})
 	if err != nil {
 		log.Print(err.Error())
-		return err
+	}
+
+	// Delete Conatiner
+	containerData, err := deleteContainer(
+		netConf,
+		args.ContainerID,
+		networkName)
+	if err != nil {
+		log.Print(err.Error())
+	}
+
+	// Free IP address
+	if containerData != nil {
+		err = freeInstanceIp(netConf, networkName, containerData.IP)
+		if err != nil {
+			log.Print(err.Error())
+		}
+	}
+
+	// Delete port from VRouter
+	if containerData != nil {
+		err = VrouterDelPort(netConf, containerData.InterfaceId)
+		if err != nil {
+			log.Print(err.Error())
+		}
 	}
 
 	return nil
