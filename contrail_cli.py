@@ -34,13 +34,13 @@ class ContrailCli:
             fun = getattr(self.api, resource + "_create")
             return fun(obj)
         except RefsExistError:
-            pass
+            return self._resource_read(resource, fqname=obj.fq_name).uuid
 
-    def _resource_read(self, resource, fqname=None, fqname_str=None):
+    def _resource_read(self, resource, fqname=None, fqname_str=None, id=None):
         fun = getattr(self.api, resource + "_read")
-        obj = fun(fq_name=fqname, fq_name_str = fqname_str)
+        obj = fun(fq_name=fqname, fq_name_str=fqname_str, id=id)
         if obj is None:
-            msg = "Resource %s does not exist" % (fqname)
+            msg = "Resource does not exist"
             raise RuntimeError(msg)
         return obj
 
@@ -48,12 +48,20 @@ class ContrailCli:
 
     def control_domain_create(self, name):
         obj = Domain(name)
-        print self._resource_create("domain", obj)
+        uuid = self._resource_create("domain", obj)
+        ret = {
+            'UUID': uuid,
+        }
+        print json.dumps(ret, indent=4, separators=(',', ': '))
 	
     def control_project_create(self, name, parent_fqname):
         parent = self._resource_read("domain", fqname_str=parent_fqname)
         obj = Project(name, parent)
-        print self._resource_create("project", obj)
+        uuid = self._resource_create("project", obj)
+        ret = {
+            'UUID': uuid,
+        }
+        print json.dumps(ret, indent=4, separators=(',', ': '))
 	
     def control_network_create(self, name, project_fqname, subnet_str):
         parent = self._resource_read("project", fqname_str=project_fqname)
@@ -64,25 +72,36 @@ class ContrailCli:
         ipam_subnet = IpamSubnetType(subnet)
         vn_subnet = VnSubnetsType([ipam_subnet])
         network.add_network_ipam(ipam, vn_subnet)
-        print self._resource_create("virtual_network", network)
+        uuid = self._resource_create("virtual_network", network)
+        ret = {
+            'UUID': uuid,
+        }
+        print json.dumps(ret, indent=4, separators=(',', ': '))
 
     def control_vm_create(self, name):
         obj = VirtualMachine(name)
-        print self._resource_create("virtual_machine", obj)
+        uuid = self._resource_create("virtual_machine", obj)
+        ret = {
+            'UUID': uuid,
+        }
+        print json.dumps(ret, indent=4, separators=(',', ': '))
 
     def control_vmi_create(self, name, parent_fqname, network_fqname):
         parent = self._resource_read("virtual_machine", fqname_str=parent_fqname)
         network = self._resource_read("virtual_network", fqname_str=network_fqname)
         obj = VirtualMachineInterface(name, parent)
         obj.add_virtual_network(network)
-        print self._resource_create("virtual_machine_interface", obj)
+        uuid = self._resource_create("virtual_machine_interface", obj)
+        ret = {
+            'UUID': uuid,
+        }
+        print json.dumps(ret, indent=4, separators=(',', ': '))
 
     def control_instance_ip_alloc(self, project_fqname, network_name, subnet_str):
-        addr_alloc = self._resource_read("virtual_network", fqname_str=project_fqname + ":addr-alloc")
-        ip = self.api.virtual_network_ip_alloc(addr_alloc, subnet=subnet_str)
         network = self._resource_read("virtual_network", fqname_str=project_fqname + ":" + network_name)
-        if len(ip) < 1:
-            raise RuntimeError("IP allocation failed")
+        ip = self.api.virtual_network_ip_alloc(network, subnet=subnet_str)
+        if len(ip) != 1:
+            raise RuntimeError("IP allocation failed (%d addresses allocated, 1 expected)" % len(ip))
         ret = {
             'Ip': ip[0],
             'Gateway': network.get_network_ipam_refs()[0]['attr'].ipam_subnets[0].default_gateway
@@ -90,43 +109,61 @@ class ContrailCli:
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
     def control_instance_ip_free(self, project_fqname, network_name, subnet_str, ip):
-        addr_alloc = self._resource_read("virtual_network", fqname_str=project_fqname + ":addr-alloc")
-        result = self.api.virtual_network_ip_free(addr_alloc, [ip], subnet=subnet_str)
-        print result
-
-    def control_container_create(self, name, project_fqname, network_name, ip):
         network = self._resource_read("virtual_network", fqname_str=project_fqname + ":" + network_name)
+        result = self.api.virtual_network_ip_free(network, [ip], subnet=subnet_str)
+        ret = {
+            'result': result,
+        }
+        print json.dumps(ret, indent=4, separators=(',', ': '))
+
+    def control_container_create(self, name, project_fqname, network_name):
         vm = VirtualMachine(name)
         vm_uuid = self._resource_create("virtual_machine", vm)
         vmi = VirtualMachineInterface(name, vm)
+        network = self._resource_read("virtual_network", fqname_str=project_fqname + ":" + network_name)
         vmi.add_virtual_network(network)
         vmi_uuid = self._resource_create("virtual_machine_interface", vmi)
-        instance_ip = InstanceIp(name + "_" + network_name, ip)
-        instance_ip.add_virtual_network(network)
-        instance_ip.add_virtual_machine_interface(vmi)
-        self._resource_create("instance_ip", instance_ip)
         vmi = self._resource_read("virtual_machine_interface", fqname=[name, name])
-        mac = vmi.virtual_machine_interface_mac_addresses.mac_address[0]
         ret = {
             'InterfaceId': vmi_uuid,
             'MachineId': vm_uuid,
-            'Mac': mac
+            'Mac': vmi.virtual_machine_interface_mac_addresses.mac_address[0]
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
     
-    def control_container_delete(self, name, project_fqname, network_name):
-        instance_ip = self.api.instance_ip_read(fq_name=[name + "_" + network_name])
+    def control_container_delete(self, name, project_fqname):
         vmi = self.api.virtual_machine_interface_read(fq_name=[name, name])
-        self.api.instance_ip_delete(fq_name=[name + "_" + network_name])
-        self.api.virtual_machine_interface_delete([name, name])
-        self.api.virtual_machine_delete([name])
+        vm = self.api.virtual_machine_read(fq_name=[name])
+        self.api.virtual_machine_interface_delete(id=vmi.uuid)
+        self.api.virtual_machine_delete(id=vm.uuid)
         ret = {
             'InterfaceId': vmi.uuid,
-            'IP': instance_ip.instance_ip_address,
+            'MachineId': vm.uuid,
+            'Mac': vmi.virtual_machine_interface_mac_addresses.mac_address[0]
+        }
+        print json.dumps(ret, indent=4, separators=(',', ': '))
+
+    def control_instance_ip_create(self, name, ip, network_uuid, vmi_uuid):
+        instance_ip = InstanceIp(name, ip)
+        network = self._resource_read("virtual_network", id=network_uuid)
+        instance_ip.add_virtual_network(network)
+        vmi = self._resource_read("virtual_machine_interface", id=vmi_uuid)
+        instance_ip.add_virtual_machine_interface(vmi)
+        uuid = self._resource_create("instance_ip", instance_ip)
+        ret = {
+            'UUID': uuid,
+        }
+        print json.dumps(ret, indent=4, separators=(',', ': '))
+
+    def control_instance_ip_delete(self, name):
+        ip = self.api.instance_ip_read(fq_name=[name])
+        self.api.instance_ip_delete(id=ip.uuid)
+        ret = {
+            'IP': ip.instance_ip_address,
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
     
-    def vrouter_port_add(self, name, vm_uuid, vif_uuid, network_uuid, iface_name, mac):
+    def vrouter_port_add(self, name, vm_uuid, vif_uuid, iface_name, mac):
         result = self.api.add_port(
                 vm_uuid,
                 vif_uuid,
