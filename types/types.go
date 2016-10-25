@@ -41,18 +41,20 @@ type NetConf struct {
 }
 
 type ContainerData struct {
-	InterfaceId string
-	MachineId   string
-	Mac         string
+	InterfaceId string `json:"vmi_uuid"`
+	MachineId   string `json:"vm_uuid"`
+	Mac         string `json:"mac"`
 }
 
 type IpData struct {
-	Ip      string
-	Gateway string
+	Ip      string `json:"ip"`
+	Gateway string `json:"gateway"`
 }
 
 type LabelsData struct {
-	Network string
+	Network  string
+	Service  string
+	External string
 }
 
 const (
@@ -64,6 +66,7 @@ const (
 	DefaultServiceSubnet  = "10.64.0.0/16"
 	DefaultPrivateNetwork = "default-network"
 	DefaultPublicNetwork  = "Public"
+	AddrAllocNetwork      = "__addr_alloc__"
 )
 
 func LoadNetConf(bytes []byte) (*NetConf, error) {
@@ -98,6 +101,12 @@ func ParseLabels(labels []Label) *LabelsData {
 
 	if value, ok := m["network"]; ok {
 		ret.Network = value
+	}
+	if value, ok := m["service"]; ok {
+		ret.Service = value
+	}
+	if value, ok := m["external"]; ok {
+		ret.External = value
 	}
 
 	return ret

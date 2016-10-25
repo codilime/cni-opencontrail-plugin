@@ -10,8 +10,10 @@ import (
 )
 
 type response struct {
-	UUID string `json:"UUID"`
-	IP   string `json:"IP"`
+	UUID             string `json:"uuid"`
+	IP               string `json:"ip"`
+	FloatingIpId     string `json:"floating_ip_uuid"`
+	FloatingIpPoolId string `json:"floating_ip_pool_uuid"`
 }
 
 func runControlCli(netConf *types.NetConf, args ...string) ([]byte, error) {
@@ -52,6 +54,27 @@ func CreateVirtualNetwork(netConf *types.NetConf, name string, subnet string) (s
 		return "", fmt.Errorf("failed to parse response from contrail_cli.py: %v: %s", err, string(output))
 	}
 	return data.UUID, nil
+}
+
+func CreateFloatingIp(netConf *types.NetConf, name, networkName, subnet, ip, vmi string) (string, error) {
+	output, err := runControlCli(
+		netConf,
+		"floating_ip_create",
+		name,
+		"default-domain:"+netConf.Project,
+		networkName,
+		subnet,
+		ip,
+		vmi)
+	if err != nil {
+		return "", fmt.Errorf("Cannot create floating IP '%s': %v: %s", name, err, string(output))
+	}
+	data := &response{}
+	err = json.Unmarshal(output, data)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse response from contrail_cli.py: %v: %s", err, string(output))
+	}
+	return data.FloatingIpId, nil
 }
 
 func CreateProject(netConf *types.NetConf) (string, error) {
@@ -151,15 +174,25 @@ func DeleteInstanceIp(netConf *types.NetConf, name string) (string, error) {
 	return data.IP, nil
 }
 
-func VrouterAddPort(netConf *types.NetConf, name string, data *types.ContainerData, ifaceName string) error {
+func VrouterAddPort(
+	netConf *types.NetConf,
+	name string,
+	projectId,
+	networkId string,
+	data *types.ContainerData,
+	ifaceName string,
+	ip string) error {
 	output, err := runVrouterCli(
 		netConf,
 		"port_add",
 		name,
+		projectId,
+		networkId,
 		data.MachineId,
 		data.InterfaceId,
 		ifaceName,
-		data.Mac)
+		data.Mac,
+		ip)
 	if err != nil {
 		return fmt.Errorf("Cannot add port to vrouter: %v: %s", err, string(output))
 	}
@@ -174,16 +207,16 @@ func VrouterDelPort(netConf *types.NetConf, interfaceId string) error {
 	return nil
 }
 
-func AllocIpAddress(netConf *types.NetConf, network string) (*types.IpData, error) {
+func AllocIpAddress(netConf *types.NetConf, network, subnet string) (*types.IpData, error) {
 	output, err := runControlCli(
 		netConf,
 		"instance_ip_alloc",
 		"default-domain:"+netConf.Project,
 		network,
-		netConf.IPAM.Subnet)
+		subnet)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"Cannot allocate instance ip in network '%s': %v: %s",
+			"Cannot allocate IP in network '%s': %v: %s",
 			network, err, string(output))
 	}
 

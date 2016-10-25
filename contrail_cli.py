@@ -50,7 +50,7 @@ class ContrailCli:
         obj = Domain(name)
         uuid = self._resource_create("domain", obj)
         ret = {
-            'UUID': uuid,
+            'uuid': uuid,
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
 	
@@ -59,41 +59,68 @@ class ContrailCli:
         obj = Project(name, parent)
         uuid = self._resource_create("project", obj)
         ret = {
-            'UUID': uuid,
+            'uuid': uuid,
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
 	
     def control_network_create(self, name, project_fqname, subnet_str):
         parent = self._resource_read("project", fqname_str=project_fqname)
-        network = VirtualNetwork(name, parent)
         ipam = self._resource_read("network_ipam", fqname_str=project_fqname + ":default-network-ipam")
+        policy = self._resource_read("network_policy", fqname_str=project_fqname + ":default-network-policy")
+        network = None
+        try:
+            uuid = self.api.fq_name_to_id("virtual_network", project_fqname.split(":") + [name])
+            network = self.api.virtual_network_read(id=uuid)
+        except NoIdError:
+            network = VirtualNetwork(name, parent)
+            uuid = self._resource_create("virtual_network", network)
+            network = self._resource_read("virtual_network", id=uuid)
+
         ipnet = IPNetwork(subnet_str)
         subnet = SubnetType(str(ipnet.ip), ipnet.prefixlen)
         ipam_subnet = IpamSubnetType(subnet)
-        vn_subnet = VnSubnetsType([ipam_subnet])
-        network.add_network_ipam(ipam, vn_subnet)
-        uuid = self._resource_create("virtual_network", network)
+        
+        ipam_list = network.get_network_ipam_refs()
+        ipam_subnet_list = None
+        if (ipam_list is None or
+                len(ipam_list) == 0 or
+                ipam_list[0] is None or
+                ipam_list[0]['attr'] is None or
+                ipam_list[0]['attr'].ipam_subnets is None):
+            ipam_subnet_list = []
+        elif ipam_list:
+            ipam_subnet_list = ipam_list[0]['attr'].ipam_subnets
+        subnet_found = False
+        for s in ipam_subnet_list:
+            if s.subnet == ipam_subnet.subnet:
+                subnet_found = True
+                break
+        if subnet_found == False:
+            ipam_subnet_list.append(ipam_subnet)
+        network.set_network_ipam(ipam, VnSubnetsType(ipam_subnet_list))
+        network.set_network_policy(policy, VirtualNetworkPolicyType())
+        self.api.virtual_network_update(network)
         ret = {
-            'UUID': uuid,
+            'uuid': network.uuid,
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
-    def control_vm_create(self, name):
-        obj = VirtualMachine(name)
-        uuid = self._resource_create("virtual_machine", obj)
+    def control_floating_ip_create(self, name, project_fqname, network_name, subnet_str, ip, vmi_uuid):
+        parent = self._resource_read("virtual_network", fqname_str=project_fqname + ":" + network_name)
+        project = self._resource_read("project", fqname_str=project_fqname)
+        vmi = self._resource_read("virtual_machine_interface", id=vmi_uuid)
+        ipnet = IPNetwork(subnet_str)
+        subnet = SubnetType(str(ipnet.ip), ipnet.prefixlen)
+        pool_type = FloatingIpPoolType([subnet])
+        pool = FloatingIpPool(network_name, parent, pool_type)
+        pool_uuid = self._resource_create("floating_ip_pool", pool)
+        fip = FloatingIp(name, pool, ip)
+        fip.add_project(project)
+        fip.add_virtual_machine_interface(vmi)
+        uuid = self._resource_create("floating_ip", fip)
         ret = {
-            'UUID': uuid,
-        }
-        print json.dumps(ret, indent=4, separators=(',', ': '))
-
-    def control_vmi_create(self, name, parent_fqname, network_fqname):
-        parent = self._resource_read("virtual_machine", fqname_str=parent_fqname)
-        network = self._resource_read("virtual_network", fqname_str=network_fqname)
-        obj = VirtualMachineInterface(name, parent)
-        obj.add_virtual_network(network)
-        uuid = self._resource_create("virtual_machine_interface", obj)
-        ret = {
-            'UUID': uuid,
+            'floating_ip_uuid': uuid,
+            'floating_ip_pool_uuid': pool_uuid
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
@@ -103,8 +130,8 @@ class ContrailCli:
         if len(ip) != 1:
             raise RuntimeError("IP allocation failed (%d addresses allocated, 1 expected)" % len(ip))
         ret = {
-            'Ip': ip[0],
-            'Gateway': network.get_network_ipam_refs()[0]['attr'].ipam_subnets[0].default_gateway
+            'ip': ip[0],
+            'gateway': network.get_network_ipam_refs()[0]['attr'].ipam_subnets[0].default_gateway
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
@@ -117,29 +144,31 @@ class ContrailCli:
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
     def control_container_create(self, name, project_fqname, network_name):
+        project = self._resource_read("project", fqname_str=project_fqname)
         vm = VirtualMachine(name)
         vm_uuid = self._resource_create("virtual_machine", vm)
-        vmi = VirtualMachineInterface(name, vm)
+        vmi = VirtualMachineInterface(name, project)
         network = self._resource_read("virtual_network", fqname_str=project_fqname + ":" + network_name)
         vmi.add_virtual_network(network)
+        vmi.add_virtual_machine(vm)
         vmi_uuid = self._resource_create("virtual_machine_interface", vmi)
-        vmi = self._resource_read("virtual_machine_interface", fqname=[name, name])
+        vmi = self._resource_read("virtual_machine_interface", fqname_str=project_fqname + ":" + name)
         ret = {
-            'InterfaceId': vmi_uuid,
-            'MachineId': vm_uuid,
-            'Mac': vmi.virtual_machine_interface_mac_addresses.mac_address[0]
+            'vmi_uuid': vmi_uuid,
+            'vm_uuid': vm_uuid,
+            'mac': vmi.virtual_machine_interface_mac_addresses.mac_address[0]
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
     
     def control_container_delete(self, name, project_fqname):
-        vmi = self.api.virtual_machine_interface_read(fq_name=[name, name])
+        vmi = self.api.virtual_machine_interface_read(fq_name_str=project_fqname + ":" + name)
         vm = self.api.virtual_machine_read(fq_name=[name])
         self.api.virtual_machine_interface_delete(id=vmi.uuid)
         self.api.virtual_machine_delete(id=vm.uuid)
         ret = {
-            'InterfaceId': vmi.uuid,
-            'MachineId': vm.uuid,
-            'Mac': vmi.virtual_machine_interface_mac_addresses.mac_address[0]
+            'vmi_uuid': vmi.uuid,
+            'vm_uuid': vm.uuid,
+            'mac': vmi.virtual_machine_interface_mac_addresses.mac_address[0]
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
@@ -151,7 +180,7 @@ class ContrailCli:
         instance_ip.add_virtual_machine_interface(vmi)
         uuid = self._resource_create("instance_ip", instance_ip)
         ret = {
-            'UUID': uuid,
+            'uuid': uuid,
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
@@ -159,18 +188,22 @@ class ContrailCli:
         ip = self.api.instance_ip_read(fq_name=[name])
         self.api.instance_ip_delete(id=ip.uuid)
         ret = {
-            'IP': ip.instance_ip_address,
+            'ip': ip.instance_ip_address,
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
     
-    def vrouter_port_add(self, name, vm_uuid, vif_uuid, iface_name, mac):
+    def vrouter_port_add(self, name, project_uuid, vn_uuid, vm_uuid, vif_uuid, iface_name, mac, ip):
         result = self.api.add_port(
                 vm_uuid,
                 vif_uuid,
                 iface_name,
                 mac,
-                port_type='NovaVMPort',
-                display_name=name)
+                ip_address=ip,
+                vn_id=vn_uuid,
+                display_name=name,
+                hostname=name,
+                vm_project_id=project_uuid,
+                port_type='NovaVMPort')
         if result != True:
             raise RuntimeError("Operation failed. Probably vrouter is not running.")
     

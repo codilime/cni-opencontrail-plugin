@@ -32,16 +32,16 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return err
 	}
 
-	// Create addr-alloc virtual network
-	networkId, err := contrail_cli.CreateVirtualNetwork(netConf, "__addr-alloc__", netConf.IPAM.Subnet)
+	// Create addr_alloc virtual network
+	networkId, err := contrail_cli.CreateVirtualNetwork(netConf, types.AddrAllocNetwork, netConf.IPAM.Subnet)
 	if err != nil {
 		log.Print(err.Error())
 		return err
 	}
-	log.Printf("__addr-alloc__ created (uuid=%s)", networkId)
+	log.Printf(types.AddrAllocNetwork+" created (uuid=%s)", networkId)
 
 	// Alloc IP
-	data, err := contrail_cli.AllocIpAddress(netConf, "__addr-alloc__")
+	data, err := contrail_cli.AllocIpAddress(netConf, types.AddrAllocNetwork, netConf.IPAM.Subnet)
 	if err != nil {
 		log.Print(err.Error())
 		return err
@@ -98,7 +98,7 @@ func cmdDel(args *skel.CmdArgs) error {
 	}
 
 	// Free IP address
-	_, err = contrail_cli.FreeIpAddress(netConf, "__addr-alloc__", netConf.IPAM.IP)
+	_, err = contrail_cli.FreeIpAddress(netConf, types.AddrAllocNetwork, netConf.IPAM.IP)
 	if err != nil {
 		log.Print(err.Error())
 		return err

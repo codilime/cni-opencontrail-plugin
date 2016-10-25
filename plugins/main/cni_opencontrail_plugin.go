@@ -57,6 +57,34 @@ func setupVeth(netns ns.NetNS, ifName string, mtu int) (string, error) {
 	return hostVethName, nil
 }
 
+func createService(netConf *types.NetConf, serviceName, serviceNetwork, subnet, vmi string) error {
+	_, err := contrail_cli.CreateVirtualNetwork(netConf, types.AddrAllocNetwork, subnet)
+	if err != nil {
+		return err
+	}
+	_, err = contrail_cli.CreateVirtualNetwork(netConf, serviceNetwork, subnet)
+	if err != nil {
+		return err
+	}
+	ipData, err := contrail_cli.AllocIpAddress(netConf, types.AddrAllocNetwork, subnet)
+	if err != nil {
+		return err
+	}
+	log.Printf("Floating IP allocated: %s\n", ipData.Ip)
+	fip, err := contrail_cli.CreateFloatingIp(
+		netConf,
+		serviceName,
+		serviceNetwork,
+		subnet,
+		ipData.Ip,
+		vmi)
+	if err != nil {
+		return err
+	}
+	log.Printf("Floating IP created: %s\n", fip)
+	return nil
+}
+
 func cmdAdd(args *skel.CmdArgs) error {
 	log.Print("ADD")
 
@@ -67,7 +95,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	// Create Project
-	_, err = contrail_cli.CreateProject(netConf)
+	projectId, err := contrail_cli.CreateProject(netConf)
 	if err != nil {
 		log.Print(err.Error())
 		return err
@@ -107,17 +135,6 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 	log.Printf("Virtual interface %s created.", hostInterfaceName)
 
-	// Add port to VRouter
-	err = contrail_cli.VrouterAddPort(
-		netConf,
-		args.ContainerID,
-		containerData,
-		hostInterfaceName)
-	if err != nil {
-		log.Print(err.Error())
-		return err
-	}
-
 	// run the IPAM plugin and get back the config to apply
 	ipamResult, err := ipam.ExecAdd(netConf.IPAM.Type, args.StdinData)
 	if err != nil {
@@ -126,6 +143,20 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 	if ipamResult == nil || ipamResult.IP4 == nil {
 		return fmt.Errorf("No IPv4 allocated by ipam module")
+	}
+
+	// Add port to VRouter
+	err = contrail_cli.VrouterAddPort(
+		netConf,
+		args.ContainerID,
+		projectId,
+		networkId,
+		containerData,
+		hostInterfaceName,
+		ipamResult.IP4.IP.IP.String())
+	if err != nil {
+		log.Print(err.Error())
+		return err
 	}
 
 	// Assign IP to VMI
@@ -168,6 +199,34 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if err != nil {
 		log.Print(err.Error())
 		return err
+	}
+
+	// Create service
+	if labels.Service != "" {
+		err = createService(
+			netConf,
+			labels.Service,
+			"service-"+labels.Service,
+			netConf.ServiceSubnet,
+			containerData.InterfaceId)
+		if err != nil {
+			log.Print(err.Error())
+			return err
+		}
+	}
+
+	// Create public IP
+	if labels.External != "" {
+		err = createService(
+			netConf,
+			labels.External,
+			netConf.PublicNetwork,
+			netConf.PublicSubnet,
+			containerData.InterfaceId)
+		if err != nil {
+			log.Print(err.Error())
+			return err
+		}
 	}
 
 	return ipamResult.Print()
