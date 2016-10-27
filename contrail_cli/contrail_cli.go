@@ -77,6 +77,24 @@ func CreateFloatingIp(netConf *types.NetConf, name, networkName, subnet, ip, vmi
 	return data.FloatingIpId, nil
 }
 
+func DeleteFloatingIp(netConf *types.NetConf, name, networkName string) (string, error) {
+	output, err := runControlCli(
+		netConf,
+		"floating_ip_delete",
+		name,
+		"default-domain:"+netConf.Project,
+		networkName)
+	if err != nil {
+		return "", fmt.Errorf("Cannot delete floating IP '%s': %v: %s", name, err, string(output))
+	}
+	data := &response{}
+	err = json.Unmarshal(output, data)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse response from contrail_cli.py: %v: %s", err, string(output))
+	}
+	return data.IP, nil
+}
+
 func CreateProject(netConf *types.NetConf) (string, error) {
 	output, err := runControlCli(
 		netConf,

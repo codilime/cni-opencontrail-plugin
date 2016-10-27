@@ -85,6 +85,18 @@ func createService(netConf *types.NetConf, serviceName, serviceNetwork, subnet, 
 	return nil
 }
 
+func deleteService(netConf *types.NetConf, serviceName, serviceNetwork string) error {
+	ip, err := contrail_cli.DeleteFloatingIp(netConf, serviceName, serviceNetwork)
+	if err != nil {
+		return err
+	}
+	_, err = contrail_cli.FreeIpAddress(netConf, types.AddrAllocNetwork, ip)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func cmdAdd(args *skel.CmdArgs) error {
 	log.Print("ADD")
 
@@ -239,6 +251,26 @@ func cmdDel(args *skel.CmdArgs) error {
 	if err != nil {
 		log.Print(err.Error())
 		return err
+	}
+
+	// Process NetworkInfo labels
+	labels := types.ParseLabels(netConf.Args.OrgApacheMesos.NetworkInfo.Labels.Labels)
+	log.Printf("Labels: %v\n", labels)
+
+	// Delete public IP
+	if labels.External != "" {
+		err = deleteService(netConf, labels.External, netConf.PublicNetwork)
+		if err != nil {
+			log.Print(err.Error())
+		}
+	}
+
+	// Delete service IP
+	if labels.Service != "" {
+		err = deleteService(netConf, labels.Service, "service-"+labels.Service)
+		if err != nil {
+			log.Print(err.Error())
+		}
 	}
 
 	// Delete InstanceIP

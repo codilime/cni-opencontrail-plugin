@@ -124,6 +124,17 @@ class ContrailCli:
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
+    def control_floating_ip_delete(self, name, project_fqname, network_name):
+        fip = self.api.floating_ip_read(fq_name_str=project_fqname +
+                ":" + network_name +
+                ":" + network_name +
+                ":" + name)
+        self.api.floating_ip_delete(id=fip.uuid)
+        ret = {
+            'ip': fip.floating_ip_address,
+        }
+        print json.dumps(ret, indent=4, separators=(',', ': '))
+
     def control_instance_ip_alloc(self, project_fqname, network_name, subnet_str):
         network = self._resource_read("virtual_network", fqname_str=project_fqname + ":" + network_name)
         ip = self.api.virtual_network_ip_alloc(network, subnet=subnet_str)
