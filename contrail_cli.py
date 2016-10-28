@@ -35,52 +35,65 @@ class ContrailCli:
         fun = getattr(self, function)
         fun(*args)
 
-    def _resource_create(self, resource, obj):
+    def _object_create(self, resource, obj):
         try:
             fun = getattr(self.api, resource + "_create")
             return fun(obj)
         except RefsExistError:
-            return self._resource_read(resource, fqname=obj.fq_name).uuid
+            return self.api.fq_name_to_id(resource, obj.fq_name)
 
-    def _resource_read(self, resource, fqname=None, fqname_str=None, id=None):
+    def _object_delete(self, resource, obj):
+        fun = getattr(self.api, resource + "_delete")
+        fun(id=obj.uuid)
+
+    def _object_read(self, resource, fqname=None, fqname_str=None, id=None):
         fun = getattr(self.api, resource + "_read")
         obj = fun(fq_name=fqname, fq_name_str=fqname_str, id=id)
         if obj is None:
-            msg = "Resource does not exist"
-            raise RuntimeError(msg)
-        return obj)
+            if fqname != None:
+                raise NoIdError("Error: Object %s not found.", ', '.join(fqname))
+            elif fqname_str != None:
+                raise NoIdError("Error: Object %s not found.", fqname_str)
+            elif id != None:
+                raise NoIdError("Error: Object %s not found.", id)
+            else:
+                raise NoIdError("Error: Object not found.")
+        return obj
+
+    def _object_try_read(self, resource, fqname=None, fqname_str=None, id=None):
+        try:
+            return self._object_try_read(resource, fqname, fqname_str, id)
+        except NoIdError:
+            return None
 
     # Commands
 
     def control_domain_create(self, name):
         obj = Domain(name)
-        uuid = self._resource_create("domain", obj)
+        uuid = self._object_create("domain", obj)
         ret = {
             'uuid': uuid,
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
 	
     def control_project_create(self, name, parent_fqname):
-        parent = self._resource_read("domain", fqname_str=parent_fqname)
+        parent = self._object_read("domain", fqname_str=parent_fqname)
         obj = Project(name, parent)
-        uuid = self._resource_create("project", obj)
+        uuid = self._object_create("project", obj)
         ret = {
             'uuid': uuid,
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
 	
     def control_network_create(self, name, project_fqname, subnet_str):
-        parent = self._resource_read("project", fqname_str=project_fqname)
-        ipam = self._resource_read("network_ipam", fqname=fqname(project_fqname, "default-network-ipam"))
-        policy = self._resource_read("network_policy", fqname=fqname(project_fqname, "default-network-policy"))
-        network = None
-        try:
-            uuid = self.api.fq_name_to_id("virtual_network", fqname(project_fqname, name))
-            network = self.api.virtual_network_read(id=uuid)
-        except NoIdError:
+        parent = self._object_read("project", fqname_str=project_fqname)
+        ipam = self._object_read("network_ipam", fqname=fqname(project_fqname, "default-network-ipam"))
+        policy = self._object_read("network_policy", fqname=fqname(project_fqname, "default-network-policy"))
+        network = self.object_try_read(fqname=fqname(project_fqname, name))
+        if network is None:
             network = VirtualNetwork(name, parent)
-            uuid = self._resource_create("virtual_network", network)
-            network = self._resource_read("virtual_network", id=uuid)
+            uuid = self._object_create("virtual_network", network)
+            network = self._object_read("virtual_network", id=uuid)
 
         ipnet = IPNetwork(subnet_str)
         subnet = SubnetType(str(ipnet.ip), ipnet.prefixlen)
@@ -112,21 +125,25 @@ class ContrailCli:
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
     def control_floating_ip_create(self, name, project_fqname, network_name, subnet_str, ip, vmi_uuid):
-        parent = self._resource_read("virtual_network", fqname=fqname(project_fqname, network_name))
-        project = self._resource_read("project", fqname_str=project_fqname)
-        vmi = self._resource_read("virtual_machine_interface", id=vmi_uuid)
+        network = self._object_read("virtual_network", fqname=fqname(project_fqname, network_name))
+        vmi = self._object_read("virtual_machine_interface", id=vmi_uuid)
         ipnet = IPNetwork(subnet_str)
         subnet = SubnetType(str(ipnet.ip), ipnet.prefixlen)
-        pool_type = FloatingIpPoolType([subnet])
-        pool = FloatingIpPool(network_name, parent, pool_type)
-        pool_uuid = self._resource_create("floating_ip_pool", pool)
-        fip = FloatingIp(name, pool, ip)
-        fip.add_project(project)
+        pool = self._object_try_read("floating_ip_pool", fqname=network.fq_name + [network_name])
+        if pool is None:
+            pool_type = FloatingIpPoolType([subnet])
+            pool = FloatingIpPool(network_name, network, pool_type)
+            pool.uuid = self._object_create("floating_ip_pool", pool)
+        fip = self._object_try_read("floating_ip", fqname=pool.fq_name + [name])
+        if fip is None:
+            fip = FloatingIp(name, pool, ip)
+            project = self._object_read("project", fqname_str=project_fqname)
+            fip.add_project(project)
+            self._object_create("floating_ip", fip)
         fip.add_virtual_machine_interface(vmi)
-        uuid = self._resource_create("floating_ip", fip)
+        self.api.floating_ip_update(fip)
         ret = {
-            'floating_ip_uuid': uuid,
-            'floating_ip_pool_uuid': pool_uuid
+            'uuid': uuid,
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
@@ -139,7 +156,7 @@ class ContrailCli:
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
     def control_instance_ip_alloc(self, project_fqname, network_name, subnet_str):
-        network = self._resource_read("virtual_network", fqname=fqname(project_fqname, network_name))
+        network = self._object_read("virtual_network", fqname=fqname(project_fqname, network_name))
         ip = self.api.virtual_network_ip_alloc(network, subnet=subnet_str)
         if len(ip) != 1:
             raise RuntimeError("IP allocation failed (%d addresses allocated, 1 expected)" % len(ip))
@@ -150,7 +167,7 @@ class ContrailCli:
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
     def control_instance_ip_free(self, project_fqname, network_name, subnet_str, ip):
-        network = self._resource_read("virtual_network", fqname=fqname(project_fqname, network_name))
+        network = self._object_read("virtual_network", fqname=fqname(project_fqname, network_name))
         result = self.api.virtual_network_ip_free(network, [ip], subnet=subnet_str)
         ret = {
             'result': result,
@@ -158,15 +175,15 @@ class ContrailCli:
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
     def control_container_create(self, name, project_fqname, network_name):
-        project = self._resource_read("project", fqname_str=project_fqname)
+        project = self._object_read("project", fqname_str=project_fqname)
         vm = VirtualMachine(name)
-        vm_uuid = self._resource_create("virtual_machine", vm)
+        vm_uuid = self.api.virtual_machine_create(vm)
         vmi = VirtualMachineInterface(name, project)
-        network = self._resource_read("virtual_network", fqname=fqname(project_fqname, network_name))
+        network = self._object_read("virtual_network", fqname=fqname(project_fqname, network_name))
         vmi.add_virtual_network(network)
         vmi.add_virtual_machine(vm)
-        vmi_uuid = self._resource_create("virtual_machine_interface", vmi)
-        vmi = self._resource_read("virtual_machine_interface", fqname=fqname(project_fqname, name))
+        vmi_uuid = self.api.virtual_machine_interface_create(vmi)
+        vmi = self._object_read("virtual_machine_interface", fqname=fqname(project_fqname, name))
         ret = {
             'vmi_uuid': vmi_uuid,
             'vm_uuid': vm_uuid,
@@ -188,11 +205,11 @@ class ContrailCli:
 
     def control_instance_ip_create(self, name, ip, network_uuid, vmi_uuid):
         instance_ip = InstanceIp(name, ip)
-        network = self._resource_read("virtual_network", id=network_uuid)
+        network = self._object_read("virtual_network", id=network_uuid)
         instance_ip.add_virtual_network(network)
-        vmi = self._resource_read("virtual_machine_interface", id=vmi_uuid)
+        vmi = self._object_read("virtual_machine_interface", id=vmi_uuid)
         instance_ip.add_virtual_machine_interface(vmi)
-        uuid = self._resource_create("instance_ip", instance_ip)
+        uuid = self._object_create("instance_ip", instance_ip)
         ret = {
             'uuid': uuid,
         }

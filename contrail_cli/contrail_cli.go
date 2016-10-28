@@ -10,10 +10,8 @@ import (
 )
 
 type response struct {
-	UUID             string `json:"uuid"`
-	IP               string `json:"ip"`
-	FloatingIpId     string `json:"floating_ip_uuid"`
-	FloatingIpPoolId string `json:"floating_ip_pool_uuid"`
+	UUID string `json:"uuid"`
+	IP   string `json:"ip"`
 }
 
 func runControlCli(netConf *types.NetConf, args ...string) ([]byte, error) {
@@ -74,7 +72,7 @@ func CreateFloatingIp(netConf *types.NetConf, name, networkName, subnet, ip, vmi
 	if err != nil {
 		return "", fmt.Errorf("failed to parse response from contrail_cli.py: %v: %s", err, string(output))
 	}
-	return data.FloatingIpId, nil
+	return data.UUID, nil
 }
 
 func DeleteFloatingIp(netConf *types.NetConf, name, networkName string) (string, error) {
