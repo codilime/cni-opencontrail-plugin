@@ -233,7 +233,33 @@ class ContrailCli:
             'ip': ip.instance_ip_address,
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
-    
+   
+    def control_create_policy(self, project_fqname, src, dst):
+        src_network = self._object_read("virtual_network", fqname=fqname(project_fqname, src))
+        dst_network = self._object_read("virtual_network", fqname=fqname(project_fqname, dst))
+        project = self._object_read("project", fqname_str=project_fqname)
+        src_addr = AddressType(virtual_network=project_fqname + ":" + src)
+        dst_addr = AddressType(virtual_network=project_fqname + ":" + dst)
+        rule = PolicyRuleType(
+                direction="<>",
+                src_addresses=[src_addr],
+                dst_addresses=[dst_addr],
+                src_ports=[PortType()],
+                dst_ports=[PortType()],
+                action_list=ActionListType("pass"),
+                protocol="any",
+                ethertype="IPv4")
+        policy = NetworkPolicy(src + "_to_" + dst, project, PolicyEntriesType([rule]))
+        uuid = self._object_create("network_policy", policy)
+        src_network.add_network_policy(policy, VirtualNetworkPolicyType())
+        dst_network.add_network_policy(policy, VirtualNetworkPolicyType())
+        self.api.virtual_network_update(src_network)
+        self.api.virtual_network_update(dst_network)
+        ret = {
+            'uuid': uuid,
+        }
+        print json.dumps(ret, indent=4, separators=(',', ': '))
+
     def vrouter_port_add(self, name, project_uuid, vn_uuid, vm_uuid, vif_uuid, iface_name, mac, ip):
         result = self.api.add_port(
                 vm_uuid,

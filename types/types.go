@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 type Label struct {
@@ -57,6 +58,7 @@ type LabelsData struct {
 	ServiceSubnet string
 	Public        string
 	PublicSubnet  string
+	Uses          []string
 }
 
 const (
@@ -101,6 +103,7 @@ func ParseLabels(netConf *NetConf) *LabelsData {
 		Network:       DefaultPrivateNetwork,
 		ServiceSubnet: netConf.ServiceSubnet,
 		PublicSubnet:  netConf.PublicSubnet,
+		Uses:          make([]string, 0),
 	}
 	m := LabelsToMap(labels)
 
@@ -118,6 +121,9 @@ func ParseLabels(netConf *NetConf) *LabelsData {
 	}
 	if value, ok := m["public_subnet"]; ok {
 		ret.PublicSubnet = value
+	}
+	if value, ok := m["uses"]; ok {
+		ret.Uses = strings.Split(value, ",")
 	}
 
 	return ret

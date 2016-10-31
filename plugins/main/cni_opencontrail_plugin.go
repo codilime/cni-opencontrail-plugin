@@ -231,6 +231,15 @@ func cmdAdd(args *skel.CmdArgs) error {
 		}
 	}
 
+	// Create network policies
+	for _, service := range labels.Uses {
+		_, err = contrail_cli.CreatePolicy(netConf, labels.Network, "service-"+service)
+		if err != nil {
+			log.Print(err.Error())
+			return err
+		}
+	}
+
 	return ipamResult.Print()
 }
 

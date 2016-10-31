@@ -221,6 +221,26 @@ func DeleteInstanceIp(netConf *types.NetConf, name string) (string, error) {
 	return data.IP, nil
 }
 
+func CreatePolicy(netConf *types.NetConf, sourceNetwork, destNetwork string) (string, error) {
+	output, err := runControlCli(
+		netConf,
+		"create_policy",
+		"default-domain:"+netConf.Project,
+		sourceNetwork,
+		destNetwork)
+	if err != nil {
+		return "", fmt.Errorf(
+			"Cannot create policy from '%s' to '%s': %v: %s",
+			sourceNetwork, destNetwork, err, string(output))
+	}
+	data := &response{}
+	err = json.Unmarshal(output, data)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse response from contrail_cli.py: %v: %s", err, string(output))
+	}
+	return data.UUID, nil
+}
+
 func VrouterAddPort(
 	netConf *types.NetConf,
 	name string,
