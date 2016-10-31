@@ -62,7 +62,7 @@ func createService(netConf *types.NetConf, serviceName, serviceNetwork, subnet, 
 	if err != nil {
 		return err
 	}
-	fipId, ip, err := contrail_cli.CreateFloatingIp(
+	fipId, err := contrail_cli.CreateFloatingIp(
 		netConf,
 		serviceName,
 		serviceNetwork,
@@ -71,16 +71,16 @@ func createService(netConf *types.NetConf, serviceName, serviceNetwork, subnet, 
 		return err
 	}
 	contrail_cli.AddVmiToFloatingIp(netConf, fipId, vmi)
-	log.Printf("Floating IP %s with associated VMI %s created (IP: %s).\n", fipId, vmi, ip)
+	log.Printf("Floating IP %s with associated VMI %s created.\n", fipId, vmi)
 	return nil
 }
 
-func deleteService(netConf *types.NetConf, serviceName, serviceNetwork string) error {
-	ip, err := contrail_cli.DeleteFloatingIp(netConf, serviceName, serviceNetwork)
+func deleteService(netConf *types.NetConf, serviceName, serviceNetwork, vmiName string) error {
+	err := contrail_cli.DeleteVmiFromFloatingIp(netConf, serviceName, serviceNetwork, vmiName)
 	if err != nil {
 		return err
 	}
-	_, err = contrail_cli.FreeIpAddress(netConf, types.AddrAllocNetwork, ip)
+	_, err = contrail_cli.DeleteFloatingIpIfEmpty(netConf, serviceName, serviceNetwork)
 	if err != nil {
 		return err
 	}
@@ -249,7 +249,7 @@ func cmdDel(args *skel.CmdArgs) error {
 
 	// Delete public IP
 	if labels.Public != "" {
-		err = deleteService(netConf, labels.Public, netConf.PublicNetwork)
+		err = deleteService(netConf, labels.Public, netConf.PublicNetwork, args.ContainerID)
 		if err != nil {
 			log.Print(err.Error())
 		}
@@ -257,7 +257,7 @@ func cmdDel(args *skel.CmdArgs) error {
 
 	// Delete service IP
 	if labels.Service != "" {
-		err = deleteService(netConf, labels.Service, "service-"+labels.Service)
+		err = deleteService(netConf, labels.Service, "service-"+labels.Service, args.ContainerID)
 		if err != nil {
 			log.Print(err.Error())
 		}

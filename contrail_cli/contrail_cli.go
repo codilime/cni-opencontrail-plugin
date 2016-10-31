@@ -54,7 +54,7 @@ func CreateVirtualNetwork(netConf *types.NetConf, name string, subnet string) (s
 	return data.UUID, nil
 }
 
-func CreateFloatingIp(netConf *types.NetConf, name, networkName, subnet string) (string, string, error) {
+func CreateFloatingIp(netConf *types.NetConf, name, networkName, subnet string) (string, error) {
 	output, err := runControlCli(
 		netConf,
 		"floating_ip_create",
@@ -63,20 +63,20 @@ func CreateFloatingIp(netConf *types.NetConf, name, networkName, subnet string) 
 		networkName,
 		subnet)
 	if err != nil {
-		return "", "", fmt.Errorf("Cannot create floating IP '%s': %v: %s", name, err, string(output))
+		return "", fmt.Errorf("Cannot create floating IP '%s': %v: %s", name, err, string(output))
 	}
 	data := &response{}
 	err = json.Unmarshal(output, data)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to parse response from contrail_cli.py: %v: %s", err, string(output))
+		return "", fmt.Errorf("failed to parse response from contrail_cli.py: %v: %s", err, string(output))
 	}
-	return data.UUID, data.IP, nil
+	return data.UUID, nil
 }
 
-func DeleteFloatingIp(netConf *types.NetConf, name, networkName string) (string, error) {
+func DeleteFloatingIpIfEmpty(netConf *types.NetConf, name, networkName string) (string, error) {
 	output, err := runControlCli(
 		netConf,
-		"floating_ip_delete",
+		"floating_ip_delete_if_empty",
 		name,
 		"default-domain:"+netConf.Project,
 		networkName)
@@ -104,6 +104,22 @@ func AddVmiToFloatingIp(netConf *types.NetConf, fipId, vmiId string) error {
 	err = json.Unmarshal(output, data)
 	if err != nil {
 		return fmt.Errorf("failed to parse response from contrail_cli.py: %v: %s", err, string(output))
+	}
+	return nil
+}
+
+func DeleteVmiFromFloatingIp(netConf *types.NetConf, serviceName, networkName, vmiId string) error {
+	output, err := runControlCli(
+		netConf,
+		"floating_ip_delete_vmi",
+		serviceName,
+		"default-domain:"+netConf.Project,
+		networkName,
+		vmiId)
+	if err != nil {
+		return fmt.Errorf(
+			"Cannot delete vmi %s from floating IP '%s': %v: %s",
+			vmiId, serviceName, err, string(output))
 	}
 	return nil
 }

@@ -144,9 +144,11 @@ class ContrailCli:
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
-    def control_floating_ip_delete(self, name, project_fqname, network_name):
+    def control_floating_ip_delete_if_empty(self, name, project_fqname, network_name):
         fip = self.api.floating_ip_read(fq_name=fqname(project_fqname, network_name, network_name, name))
-        self.api.floating_ip_delete(id=fip.uuid)
+        vmi_refs = fip.get_virtual_machine_interface_refs()
+        if vmi_refs is None or len(vmi_refs) == 0:
+            self.api.floating_ip_delete(id=fip.uuid)
         ret = {
             'ip': fip.floating_ip_address,
         }
@@ -156,6 +158,12 @@ class ContrailCli:
         fip = self._object_read("floating_ip", id=fip_uuid)
         vmi = self._object_read("virtual_machine_interface", id=vmi_uuid)
         fip.add_virtual_machine_interface(vmi)
+        self.api.floating_ip_update(fip)
+    
+    def control_floating_ip_delete_vmi(self, name, project_fqname, network_name, vmi_name):
+        fip = self._object_read("floating_ip", fqname=fqname(project_fqname, network_name, network_name, name))
+        vmi = self._object_read("virtual_machine_interface", fqname=fqname(project_fqname, vmi_name))
+        fip.del_virtual_machine_interface(vmi)
         self.api.floating_ip_update(fip)
 
     def control_instance_ip_alloc(self, project_fqname, network_name, subnet_str):
