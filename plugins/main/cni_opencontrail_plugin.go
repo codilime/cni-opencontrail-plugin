@@ -76,12 +76,12 @@ func createService(netConf *types.NetConf, serviceName, serviceNetwork, subnet, 
 		serviceName,
 		serviceNetwork,
 		subnet,
-		ipData.Ip,
-		vmi)
+		ipData.Ip)
 	if err != nil {
 		return err
 	}
-	log.Printf("Floating IP created: %s\n", fip)
+	contrail_cli.AddVmiToFloatingIp(netConf, fip, vmi)
+	log.Printf("Floating IP created: %s\n", fip, vmi)
 	return nil
 }
 

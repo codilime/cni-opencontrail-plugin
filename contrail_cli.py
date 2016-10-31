@@ -12,7 +12,7 @@ def eprint(msg):
 def fqname(*args):
     ret = []
     for name in args:
-        ret += split(":")
+        ret += name.split(":")
     return ret
 
 class ContrailCli:
@@ -62,7 +62,7 @@ class ContrailCli:
 
     def _object_try_read(self, resource, fqname=None, fqname_str=None, id=None):
         try:
-            return self._object_try_read(resource, fqname, fqname_str, id)
+            return self._object_read(resource, fqname, fqname_str, id)
         except NoIdError:
             return None
 
@@ -89,7 +89,7 @@ class ContrailCli:
         parent = self._object_read("project", fqname_str=project_fqname)
         ipam = self._object_read("network_ipam", fqname=fqname(project_fqname, "default-network-ipam"))
         policy = self._object_read("network_policy", fqname=fqname(project_fqname, "default-network-policy"))
-        network = self.object_try_read(fqname=fqname(project_fqname, name))
+        network = self._object_try_read("virtual_network", fqname=fqname(project_fqname, name))
         if network is None:
             network = VirtualNetwork(name, parent)
             uuid = self._object_create("virtual_network", network)
@@ -124,9 +124,8 @@ class ContrailCli:
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
-    def control_floating_ip_create(self, name, project_fqname, network_name, subnet_str, ip, vmi_uuid):
+    def control_floating_ip_create(self, name, project_fqname, network_name, subnet_str, ip):
         network = self._object_read("virtual_network", fqname=fqname(project_fqname, network_name))
-        vmi = self._object_read("virtual_machine_interface", id=vmi_uuid)
         ipnet = IPNetwork(subnet_str)
         subnet = SubnetType(str(ipnet.ip), ipnet.prefixlen)
         pool = self._object_try_read("floating_ip_pool", fqname=network.fq_name + [network_name])
@@ -139,11 +138,9 @@ class ContrailCli:
             fip = FloatingIp(name, pool, ip)
             project = self._object_read("project", fqname_str=project_fqname)
             fip.add_project(project)
-            self._object_create("floating_ip", fip)
-        fip.add_virtual_machine_interface(vmi)
-        self.api.floating_ip_update(fip)
+            fip.uuid = self._object_create("floating_ip", fip)
         ret = {
-            'uuid': uuid,
+            'uuid': fip.uuid,
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
@@ -154,6 +151,12 @@ class ContrailCli:
             'ip': fip.floating_ip_address,
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
+
+    def control_floating_ip_add_vmi(self, fip_uuid, vmi_uuid):
+        fip = self._object_read("floating_ip", id=fip_uuid)
+        vmi = self._object_read("virtual_machine_interface", id=vmi_uuid)
+        fip.add_virtual_machine_interface(vmi)
+        self.api.floating_ip_update(fip)
 
     def control_instance_ip_alloc(self, project_fqname, network_name, subnet_str):
         network = self._object_read("virtual_network", fqname=fqname(project_fqname, network_name))
@@ -240,6 +243,9 @@ class ContrailCli:
     
     def vrouter_port_del(self, vif_uuid):
         self.api.delete_port(vif_uuid)
+
+    def control_fqname_to_id(self, resource, fqname):
+        uuid = self.api.fq_name_to_id(resource, fqname.split(":"))
 	
 def main():
     try:

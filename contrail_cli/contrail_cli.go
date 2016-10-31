@@ -54,7 +54,7 @@ func CreateVirtualNetwork(netConf *types.NetConf, name string, subnet string) (s
 	return data.UUID, nil
 }
 
-func CreateFloatingIp(netConf *types.NetConf, name, networkName, subnet, ip, vmi string) (string, error) {
+func CreateFloatingIp(netConf *types.NetConf, name, networkName, subnet, ip string) (string, error) {
 	output, err := runControlCli(
 		netConf,
 		"floating_ip_create",
@@ -62,8 +62,7 @@ func CreateFloatingIp(netConf *types.NetConf, name, networkName, subnet, ip, vmi
 		"default-domain:"+netConf.Project,
 		networkName,
 		subnet,
-		ip,
-		vmi)
+		ip)
 	if err != nil {
 		return "", fmt.Errorf("Cannot create floating IP '%s': %v: %s", name, err, string(output))
 	}
@@ -91,6 +90,23 @@ func DeleteFloatingIp(netConf *types.NetConf, name, networkName string) (string,
 		return "", fmt.Errorf("failed to parse response from contrail_cli.py: %v: %s", err, string(output))
 	}
 	return data.IP, nil
+}
+
+func AddVmiToFloatingIp(netConf *types.NetConf, fipId, vmiId string) error {
+	output, err := runControlCli(
+		netConf,
+		"floating_ip_add_vmi",
+		fipId,
+		vmiId)
+	if err != nil {
+		return fmt.Errorf("Cannot add vmi %s to floating IP '%s': %v: %s", vmiId, fipId, err, string(output))
+	}
+	data := &response{}
+	err = json.Unmarshal(output, data)
+	if err != nil {
+		return fmt.Errorf("failed to parse response from contrail_cli.py: %v: %s", err, string(output))
+	}
+	return nil
 }
 
 func CreateProject(netConf *types.NetConf) (string, error) {
