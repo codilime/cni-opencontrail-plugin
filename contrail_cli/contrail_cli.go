@@ -54,24 +54,23 @@ func CreateVirtualNetwork(netConf *types.NetConf, name string, subnet string) (s
 	return data.UUID, nil
 }
 
-func CreateFloatingIp(netConf *types.NetConf, name, networkName, subnet, ip string) (string, error) {
+func CreateFloatingIp(netConf *types.NetConf, name, networkName, subnet string) (string, string, error) {
 	output, err := runControlCli(
 		netConf,
 		"floating_ip_create",
 		name,
 		"default-domain:"+netConf.Project,
 		networkName,
-		subnet,
-		ip)
+		subnet)
 	if err != nil {
-		return "", fmt.Errorf("Cannot create floating IP '%s': %v: %s", name, err, string(output))
+		return "", "", fmt.Errorf("Cannot create floating IP '%s': %v: %s", name, err, string(output))
 	}
 	data := &response{}
 	err = json.Unmarshal(output, data)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse response from contrail_cli.py: %v: %s", err, string(output))
+		return "", "", fmt.Errorf("failed to parse response from contrail_cli.py: %v: %s", err, string(output))
 	}
-	return data.UUID, nil
+	return data.UUID, data.IP, nil
 }
 
 func DeleteFloatingIp(netConf *types.NetConf, name, networkName string) (string, error) {

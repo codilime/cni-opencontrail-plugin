@@ -58,30 +58,20 @@ func setupVeth(netns ns.NetNS, ifName string, mtu int) (string, error) {
 }
 
 func createService(netConf *types.NetConf, serviceName, serviceNetwork, subnet, vmi string) error {
-	_, err := contrail_cli.CreateVirtualNetwork(netConf, types.AddrAllocNetwork, subnet)
+	_, err := contrail_cli.CreateVirtualNetwork(netConf, serviceNetwork, subnet)
 	if err != nil {
 		return err
 	}
-	_, err = contrail_cli.CreateVirtualNetwork(netConf, serviceNetwork, subnet)
-	if err != nil {
-		return err
-	}
-	ipData, err := contrail_cli.AllocIpAddress(netConf, types.AddrAllocNetwork, subnet)
-	if err != nil {
-		return err
-	}
-	log.Printf("Floating IP allocated: %s\n", ipData.Ip)
-	fip, err := contrail_cli.CreateFloatingIp(
+	fipId, ip, err := contrail_cli.CreateFloatingIp(
 		netConf,
 		serviceName,
 		serviceNetwork,
-		subnet,
-		ipData.Ip)
+		subnet)
 	if err != nil {
 		return err
 	}
-	contrail_cli.AddVmiToFloatingIp(netConf, fip, vmi)
-	log.Printf("Floating IP created: %s\n", fip, vmi)
+	contrail_cli.AddVmiToFloatingIp(netConf, fipId, vmi)
+	log.Printf("Floating IP %s with associated VMI %s created (IP: %s).\n", fipId, vmi, ip)
 	return nil
 }
 
@@ -114,7 +104,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	// Process NetworkInfo labels
-	labels := types.ParseLabels(netConf.Args.OrgApacheMesos.NetworkInfo.Labels.Labels)
+	labels := types.ParseLabels(netConf)
 	log.Printf("Labels: %v\n", labels)
 
 	// Create virtual network
@@ -219,7 +209,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 			netConf,
 			labels.Service,
 			"service-"+labels.Service,
-			netConf.ServiceSubnet,
+			labels.ServiceSubnet,
 			containerData.InterfaceId)
 		if err != nil {
 			log.Print(err.Error())
@@ -228,12 +218,12 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	// Create public IP
-	if labels.External != "" {
+	if labels.Public != "" {
 		err = createService(
 			netConf,
-			labels.External,
+			labels.Public,
 			netConf.PublicNetwork,
-			netConf.PublicSubnet,
+			labels.PublicSubnet,
 			containerData.InterfaceId)
 		if err != nil {
 			log.Print(err.Error())
@@ -254,12 +244,12 @@ func cmdDel(args *skel.CmdArgs) error {
 	}
 
 	// Process NetworkInfo labels
-	labels := types.ParseLabels(netConf.Args.OrgApacheMesos.NetworkInfo.Labels.Labels)
+	labels := types.ParseLabels(netConf)
 	log.Printf("Labels: %v\n", labels)
 
 	// Delete public IP
-	if labels.External != "" {
-		err = deleteService(netConf, labels.External, netConf.PublicNetwork)
+	if labels.Public != "" {
+		err = deleteService(netConf, labels.Public, netConf.PublicNetwork)
 		if err != nil {
 			log.Print(err.Error())
 		}

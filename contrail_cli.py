@@ -124,7 +124,7 @@ class ContrailCli:
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
-    def control_floating_ip_create(self, name, project_fqname, network_name, subnet_str, ip):
+    def control_floating_ip_create(self, name, project_fqname, network_name, subnet_str):
         network = self._object_read("virtual_network", fqname=fqname(project_fqname, network_name))
         ipnet = IPNetwork(subnet_str)
         subnet = SubnetType(str(ipnet.ip), ipnet.prefixlen)
@@ -135,7 +135,7 @@ class ContrailCli:
             pool.uuid = self._object_create("floating_ip_pool", pool)
         fip = self._object_try_read("floating_ip", fqname=pool.fq_name + [name])
         if fip is None:
-            fip = FloatingIp(name, pool, ip)
+            fip = FloatingIp(name, pool)
             project = self._object_read("project", fqname_str=project_fqname)
             fip.add_project(project)
             fip.uuid = self._object_create("floating_ip", fip)

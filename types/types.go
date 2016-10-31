@@ -52,9 +52,11 @@ type IpData struct {
 }
 
 type LabelsData struct {
-	Network  string
-	Service  string
-	External string
+	Network       string
+	Service       string
+	ServiceSubnet string
+	Public        string
+	PublicSubnet  string
 }
 
 const (
@@ -93,9 +95,12 @@ func LabelsToMap(labels []Label) map[string]string {
 	return ret
 }
 
-func ParseLabels(labels []Label) *LabelsData {
+func ParseLabels(netConf *NetConf) *LabelsData {
+	labels := netConf.Args.OrgApacheMesos.NetworkInfo.Labels.Labels
 	ret := &LabelsData{
-		Network: DefaultPrivateNetwork,
+		Network:       DefaultPrivateNetwork,
+		ServiceSubnet: netConf.ServiceSubnet,
+		PublicSubnet:  netConf.PublicSubnet,
 	}
 	m := LabelsToMap(labels)
 
@@ -105,8 +110,14 @@ func ParseLabels(labels []Label) *LabelsData {
 	if value, ok := m["service"]; ok {
 		ret.Service = value
 	}
-	if value, ok := m["external"]; ok {
-		ret.External = value
+	if value, ok := m["service_subnet"]; ok {
+		ret.ServiceSubnet = value
+	}
+	if value, ok := m["public"]; ok {
+		ret.Public = value
+	}
+	if value, ok := m["public_subnet"]; ok {
+		ret.PublicSubnet = value
 	}
 
 	return ret
