@@ -58,19 +58,18 @@ func setupVeth(netns ns.NetNS, ifName string, mtu int) (string, error) {
 }
 
 func createService(netConf *types.NetConf, serviceName, serviceNetwork, subnet, vmi string) error {
-	_, err := contrail_cli.CreateVirtualNetwork(netConf, serviceNetwork, subnet)
+	_, subnetId, err := contrail_cli.CreateVirtualNetwork(netConf, serviceNetwork, subnet)
 	if err != nil {
 		return err
 	}
 	fipId, err := contrail_cli.CreateFloatingIp(
 		netConf,
 		serviceName,
-		serviceNetwork,
-		subnet)
+		subnetId)
 	if err != nil {
 		return err
 	}
-	contrail_cli.AddVmiToFloatingIp(netConf, fipId, vmi)
+	//contrail_cli.AddVmiToFloatingIp(netConf, fipId, vmi)
 	log.Printf("Floating IP %s with associated VMI %s created.\n", fipId, vmi)
 	return nil
 }
@@ -108,7 +107,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	log.Printf("Labels: %v\n", labels)
 
 	// Create virtual network
-	networkId, err := contrail_cli.CreateVirtualNetwork(netConf, labels.Network, netConf.PrivateSubnet)
+	networkId, _, err := contrail_cli.CreateVirtualNetwork(netConf, labels.Network, netConf.PrivateSubnet)
 	if err != nil {
 		log.Print(err.Error())
 		return err
@@ -207,7 +206,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if labels.Service != "" {
 		err = createService(
 			netConf,
-			labels.Service,
+			"service-"+labels.Service,
 			"service-"+labels.Service,
 			labels.ServiceSubnet,
 			containerData.InterfaceId)
@@ -221,7 +220,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if labels.Public != "" {
 		err = createService(
 			netConf,
-			labels.Public,
+			"public-"+labels.Public,
 			netConf.PublicNetwork,
 			labels.PublicSubnet,
 			containerData.InterfaceId)
@@ -258,7 +257,7 @@ func cmdDel(args *skel.CmdArgs) error {
 
 	// Delete public IP
 	if labels.Public != "" {
-		err = deleteService(netConf, labels.Public, netConf.PublicNetwork, args.ContainerID)
+		err = deleteService(netConf, "public-"+labels.Public, netConf.PublicNetwork, args.ContainerID)
 		if err != nil {
 			log.Print(err.Error())
 		}
@@ -266,7 +265,7 @@ func cmdDel(args *skel.CmdArgs) error {
 
 	// Delete service IP
 	if labels.Service != "" {
-		err = deleteService(netConf, labels.Service, "service-"+labels.Service, args.ContainerID)
+		err = deleteService(netConf, "service-"+labels.Service, "service-"+labels.Service, args.ContainerID)
 		if err != nil {
 			log.Print(err.Error())
 		}

@@ -33,7 +33,8 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	// Create addr_alloc virtual network
-	networkId, err := contrail_cli.CreateVirtualNetwork(netConf, types.AddrAllocNetwork, netConf.IPAM.Subnet)
+	networkId, _, err := contrail_cli.CreateVirtualNetwork(
+		netConf, types.AddrAllocNetwork, netConf.IPAM.Subnet)
 	if err != nil {
 		log.Print(err.Error())
 		return err

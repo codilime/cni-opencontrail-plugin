@@ -119,10 +119,33 @@ class ContrailCli:
         network.set_network_ipam(ipam, VnSubnetsType(ipam_subnet_list))
         network.set_network_policy(policy, VirtualNetworkPolicyType())
         self.api.virtual_network_update(network)
+        network = self._object_read("virtual_network", id=network.uuid)
+        subnet_uuid = None
+        for s in network.get_network_ipam_refs()[0]['attr'].ipam_subnets:
+            if s.subnet == ipam_subnet.subnet:
+                subnet_uuid = s.subnet_uuid
+                break
         ret = {
             'uuid': network.uuid,
+            'subnet_uuid': subnet_uuid,
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
+
+    def control_virtual_ip_create(self, name, project_fqname, subnet_uuid):
+        project = self._object_read("project", fqname_str=project_fqname)
+        vip_type = VirtualIpType(address="172.18.15.100", subnet_id=subnet_uuid)
+        vip = VirtualIp(name, project, vip_type)
+        vip_uuid = self._object_create("virtual_ip", vip)
+        ret = {
+            'uuid': vip_uuid,
+        }
+        print json.dumps(ret, indent=4, separators=(',', ': '))
+
+    def control_virtual_ip_add_vmi(self, vip_uuid, vmi_uuid):
+        vip = self._object_read("virtual_ip", id=vip_uuid)
+        vmi = self._object_read("virtual_machine_interface", id=vmi_uuid)
+        vip.add_virtual_machine_interface(vmi)
+        self.api.virtual_ip_update(vip)
 
     def control_floating_ip_create(self, name, project_fqname, network_name, subnet_str):
         network = self._object_read("virtual_network", fqname=fqname(project_fqname, network_name))

@@ -10,8 +10,9 @@ import (
 )
 
 type response struct {
-	UUID string `json:"uuid"`
-	IP   string `json:"ip"`
+	UUID       string `json:"uuid"`
+	SubnetUUID string `json:"subnet_uuid"`
+	IP         string `json:"ip"`
 }
 
 func runControlCli(netConf *types.NetConf, args ...string) ([]byte, error) {
@@ -36,7 +37,7 @@ func runVrouterCli(netConf *types.NetConf, args ...string) ([]byte, error) {
 	return out, err
 }
 
-func CreateVirtualNetwork(netConf *types.NetConf, name string, subnet string) (string, error) {
+func CreateVirtualNetwork(netConf *types.NetConf, name string, subnet string) (string, string, error) {
 	output, err := runControlCli(
 		netConf,
 		"network_create",
@@ -44,24 +45,23 @@ func CreateVirtualNetwork(netConf *types.NetConf, name string, subnet string) (s
 		"default-domain:"+netConf.Project,
 		subnet)
 	if err != nil {
-		return "", fmt.Errorf("Cannot create network '%s': %v: %s", name, err, string(output))
+		return "", "", fmt.Errorf("Cannot create network '%s': %v: %s", name, err, string(output))
 	}
 	data := &response{}
 	err = json.Unmarshal(output, data)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse response from contrail_cli.py: %v: %s", err, string(output))
+		return "", "", fmt.Errorf("failed to parse response from contrail_cli.py: %v: %s", err, string(output))
 	}
-	return data.UUID, nil
+	return data.UUID, data.SubnetUUID, nil
 }
 
-func CreateFloatingIp(netConf *types.NetConf, name, networkName, subnet string) (string, error) {
+func CreateFloatingIp(netConf *types.NetConf, name, subnetId string) (string, error) {
 	output, err := runControlCli(
 		netConf,
-		"floating_ip_create",
+		"virtual_ip_create",
 		name,
 		"default-domain:"+netConf.Project,
-		networkName,
-		subnet)
+		subnetId)
 	if err != nil {
 		return "", fmt.Errorf("Cannot create floating IP '%s': %v: %s", name, err, string(output))
 	}
@@ -94,7 +94,7 @@ func DeleteFloatingIpIfEmpty(netConf *types.NetConf, name, networkName string) (
 func AddVmiToFloatingIp(netConf *types.NetConf, fipId, vmiId string) error {
 	output, err := runControlCli(
 		netConf,
-		"floating_ip_add_vmi",
+		"virtual_ip_add_vmi",
 		fipId,
 		vmiId)
 	if err != nil {
