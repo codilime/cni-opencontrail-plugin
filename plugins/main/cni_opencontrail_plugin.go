@@ -215,6 +215,14 @@ func cmdAdd(args *skel.CmdArgs) error {
 			log.Print(err.Error())
 			return err
 		}
+		// Create network policies
+		for _, service := range labels.Uses {
+			_, err = contrail_cli.CreatePolicy(netConf, "service-"+labels.Service, "service-"+service)
+			if err != nil {
+				log.Print(err.Error())
+				return err
+			}
+		}
 	}
 
 	// Create public IP
@@ -225,15 +233,6 @@ func cmdAdd(args *skel.CmdArgs) error {
 			netConf.PublicNetwork,
 			labels.PublicSubnet,
 			containerData.InterfaceId)
-		if err != nil {
-			log.Print(err.Error())
-			return err
-		}
-	}
-
-	// Create network policies
-	for _, service := range labels.Uses {
-		_, err = contrail_cli.CreatePolicy(netConf, labels.Network, "service-"+service)
 		if err != nil {
 			log.Print(err.Error())
 			return err
