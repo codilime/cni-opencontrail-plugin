@@ -137,8 +137,10 @@ class ContrailCli:
             project = self._object_read("project", fqname_str=project_fqname)
             fip.add_project(project)
             fip.uuid = self._object_create("floating_ip", fip)
+        fip = self._object_read("floating_ip", id=fip.uuid)
         ret = {
             'uuid': fip.uuid,
+            'ip': fip.floating_ip_address
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
@@ -171,7 +173,8 @@ class ContrailCli:
             raise RuntimeError("IP allocation failed (%d addresses allocated, 1 expected)" % len(ip))
         ret = {
             'ip': ip[0],
-            'gateway': network.get_network_ipam_refs()[0]['attr'].ipam_subnets[0].default_gateway
+            'gateway': network.get_network_ipam_refs()[0]['attr'].ipam_subnets[0].default_gateway,
+            'nameserver': network.get_network_ipam_refs()[0]['attr'].ipam_subnets[0].dns_server_address
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
@@ -261,6 +264,33 @@ class ContrailCli:
             'uuid': uuid,
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
+
+    def control_create_virtual_dns(self, name, domain_fqname, project_name, domain_name):
+        domain = self._object_read("domain", fqname_str=domain_fqname)
+        dns_type = VirtualDnsType(
+                domain_name=domain_name,
+                record_order="random",
+                external_visible=True,
+                default_ttl_seconds=86400)
+        dns = VirtualDns(name, domain, dns_type)
+        uuid = self._object_create("virtual_DNS", dns)
+        ipam = self._object_read("network_ipam", fqname=fqname(
+            domain_fqname, project_name, "default-network-ipam"))
+        ipam.network_ipam_mgmt = IpamType(
+                ipam_dns_method="virtual-dns-server",
+                ipam_dns_server=IpamDnsAddressType(virtual_dns_server_name=domain_fqname + ":" + name))
+        ipam.set_virtual_DNS(dns)
+        self.api.network_ipam_update(ipam)
+        ret = {
+            'uuid': uuid,
+        }
+        print json.dumps(ret, indent=4, separators=(',', ': ')) 
+
+    def control_create_virtual_dns_record(self, name, ip, dns_uuid):
+        dns = self._object_read("virtual_DNS", id=dns_uuid)
+        data = VirtualDnsRecordType(name, "A", "IN", ip, 86400)
+        record = VirtualDnsRecord(name, dns, data)
+        uuid = self._object_create("virtual_DNS_record", record)
 
     def vrouter_port_add(self, name, project_uuid, vn_uuid, vm_uuid, vif_uuid, iface_name, mac, ip):
         result = self.api.add_port(

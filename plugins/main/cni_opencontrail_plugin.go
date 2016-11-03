@@ -57,22 +57,22 @@ func setupVeth(netns ns.NetNS, ifName string, mtu int) (string, error) {
 	return hostVethName, nil
 }
 
-func createService(netConf *types.NetConf, serviceName, serviceNetwork, subnet, vmi string) error {
+func createService(netConf *types.NetConf, serviceName, serviceNetwork, subnet, vmi string) (string, error) {
 	_, err := contrail_cli.CreateVirtualNetwork(netConf, serviceNetwork, subnet)
 	if err != nil {
-		return err
+		return "", err
 	}
-	fipId, err := contrail_cli.CreateFloatingIp(
+	fipId, ip, err := contrail_cli.CreateFloatingIp(
 		netConf,
 		serviceName,
 		serviceNetwork,
 		subnet)
 	if err != nil {
-		return err
+		return "", err
 	}
 	contrail_cli.AddVmiToFloatingIp(netConf, fipId, vmi)
 	log.Printf("Floating IP %s with associated VMI %s created.\n", fipId, vmi)
-	return nil
+	return ip, nil
 }
 
 func deleteService(netConf *types.NetConf, serviceName, serviceNetwork, vmiName string) error {
@@ -205,7 +205,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 
 	// Create service
 	if labels.Service != "" {
-		err = createService(
+		serviceIp, err := createService(
 			netConf,
 			labels.Service,
 			"service-"+labels.Service,
@@ -215,6 +215,19 @@ func cmdAdd(args *skel.CmdArgs) error {
 			log.Print(err.Error())
 			return err
 		}
+
+		dnsId, err := contrail_cli.CreateVirtualDns(netConf)
+		if err != nil {
+			log.Print(err.Error())
+			return err
+		}
+
+		err = contrail_cli.CreateVirtualDnsRecord(netConf, dnsId, labels.Service, serviceIp)
+		if err != nil {
+			log.Print(err.Error())
+			return err
+		}
+
 		// Create network policies
 		for _, service := range labels.Uses {
 			_, err = contrail_cli.CreatePolicy(netConf, "service-"+labels.Service, "service-"+service)
@@ -227,7 +240,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 
 	// Create public IP
 	if labels.Public != "" {
-		err = createService(
+		_, err = createService(
 			netConf,
 			labels.Public,
 			netConf.PublicNetwork,

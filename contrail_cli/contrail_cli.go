@@ -54,7 +54,7 @@ func CreateVirtualNetwork(netConf *types.NetConf, name string, subnet string) (s
 	return data.UUID, nil
 }
 
-func CreateFloatingIp(netConf *types.NetConf, name, networkName, subnet string) (string, error) {
+func CreateFloatingIp(netConf *types.NetConf, name, networkName, subnet string) (string, string, error) {
 	output, err := runControlCli(
 		netConf,
 		"floating_ip_create",
@@ -63,14 +63,14 @@ func CreateFloatingIp(netConf *types.NetConf, name, networkName, subnet string) 
 		networkName,
 		subnet)
 	if err != nil {
-		return "", fmt.Errorf("Cannot create floating IP '%s': %v: %s", name, err, string(output))
+		return "", "", fmt.Errorf("Cannot create floating IP '%s': %v: %s", name, err, string(output))
 	}
 	data := &response{}
 	err = json.Unmarshal(output, data)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse response from contrail_cli.py: %v: %s", err, string(output))
+		return "", "", fmt.Errorf("failed to parse response from contrail_cli.py: %v: %s", err, string(output))
 	}
-	return data.UUID, nil
+	return data.UUID, data.IP, nil
 }
 
 func DeleteFloatingIpIfEmpty(netConf *types.NetConf, name, networkName string) (string, error) {
@@ -239,6 +239,40 @@ func CreatePolicy(netConf *types.NetConf, sourceNetwork, destNetwork string) (st
 		return "", fmt.Errorf("failed to parse response from contrail_cli.py: %v: %s", err, string(output))
 	}
 	return data.UUID, nil
+}
+
+func CreateVirtualDns(netConf *types.NetConf) (string, error) {
+	output, err := runControlCli(
+		netConf,
+		"create_virtual_dns",
+		"default-dns",
+		"default-domain",
+		netConf.Project,
+		netConf.Domain)
+	if err != nil {
+		return "", fmt.Errorf(
+			"Cannot create virtual DNS: %v: %s", err, string(output))
+	}
+	data := &response{}
+	err = json.Unmarshal(output, data)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse response from contrail_cli.py: %v: %s", err, string(output))
+	}
+	return data.UUID, nil
+}
+
+func CreateVirtualDnsRecord(netConf *types.NetConf, dnsId, name, ip string) error {
+	output, err := runControlCli(
+		netConf,
+		"create_virtual_dns_record",
+		name,
+		ip,
+		dnsId)
+	if err != nil {
+		return fmt.Errorf(
+			"Cannot create virtual DNS record '%s': %v: %s", name, err, string(output))
+	}
+	return nil
 }
 
 func VrouterAddPort(

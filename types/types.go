@@ -20,6 +20,7 @@ type NetConf struct {
 	PublicSubnet    string   `json:"public_subnet"`
 	PrivateSubnet   string   `json:"private_subnet"`
 	ServiceSubnet   string   `json:"service_subnet"`
+	Domain          string   `json:"domain"`
 	MTU             int      `json:"mtu"`
 	ContrailCliCmd  string   `json:"contrail_cli_cmd"`
 	ContrailCliArgs []string `json:"contrail_cli_args"`
@@ -48,8 +49,9 @@ type ContainerData struct {
 }
 
 type IpData struct {
-	Ip      string `json:"ip"`
-	Gateway string `json:"gateway"`
+	Ip         string `json:"ip"`
+	Gateway    string `json:"gateway"`
+	NameServer string `json:"nameserver"`
 }
 
 type LabelsData struct {

@@ -83,6 +83,10 @@ func cmdAdd(args *skel.CmdArgs) error {
 				},
 			},
 		},
+		DNS: cniTypes.DNS{
+			Nameservers: []string{data.NameServer},
+			Domain:      netConf.Domain,
+		},
 	}
 
 	return result.Print()
