@@ -1,4 +1,5 @@
 *.swp
-cni-opencontrail-plugin
+cni_opencontrail_plugin
+cni_opencontrail_ipam
 *.o
 *.so
