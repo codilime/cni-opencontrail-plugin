@@ -88,7 +88,6 @@ class ContrailCli:
     def control_network_create(self, name, project_fqname, subnet_str):
         parent = self._object_read("project", fqname_str=project_fqname)
         ipam = self._object_read("network_ipam", fqname=fqname(project_fqname, "default-network-ipam"))
-        policy = self._object_read("network_policy", fqname=fqname(project_fqname, "default-network-policy"))
         network = self._object_try_read("virtual_network", fqname=fqname(project_fqname, name))
         if network is None:
             network = VirtualNetwork(name, parent)
@@ -117,7 +116,6 @@ class ContrailCli:
         if subnet_found == False:
             ipam_subnet_list.append(ipam_subnet)
         network.set_network_ipam(ipam, VnSubnetsType(ipam_subnet_list))
-        network.set_network_policy(policy, VirtualNetworkPolicyType())
         self.api.virtual_network_update(network)
         ret = {
             'uuid': network.uuid,
@@ -251,8 +249,12 @@ class ContrailCli:
                 ethertype="IPv4")
         policy = NetworkPolicy(src + "_to_" + dst, project, PolicyEntriesType([rule]))
         uuid = self._object_create("network_policy", policy)
-        src_network.add_network_policy(policy, VirtualNetworkPolicyType())
-        dst_network.add_network_policy(policy, VirtualNetworkPolicyType())
+        src_network.add_network_policy(
+                policy,
+                VirtualNetworkPolicyType(sequence=SequenceType(), timer=TimerType()))
+        dst_network.add_network_policy(
+                policy,
+                VirtualNetworkPolicyType(sequence=SequenceType(), timer=TimerType()))
         self.api.virtual_network_update(src_network)
         self.api.virtual_network_update(dst_network)
         ret = {
