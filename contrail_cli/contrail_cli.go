@@ -20,7 +20,9 @@ func runControlCli(netConf *types.NetConf, args ...string) ([]byte, error) {
 		netConf.ContrailCliArgs,
 		"control",
 		netConf.ContrailServer,
-		strconv.Itoa(netConf.ContrailPort))
+		strconv.Itoa(netConf.ContrailPort),
+		"default-domain",
+		netConf.Project)
 	cmd_args = append(cmd_args, args...)
 	cmd := exec.Command(netConf.ContrailCliCmd, cmd_args...)
 	out, err := cmd.CombinedOutput()
@@ -42,7 +44,6 @@ func VirtualNetworkCreate(netConf *types.NetConf, name string, subnet string) (s
 		netConf,
 		"network_create",
 		name,
-		"default-domain:"+netConf.Project,
 		subnet)
 	if err != nil {
 		return "", fmt.Errorf("Cannot create network '%s': %v: %s", name, err, string(output))
@@ -60,7 +61,6 @@ func FloatingIpCreate(netConf *types.NetConf, name, networkName, subnet string) 
 		netConf,
 		"floating_ip_create",
 		name,
-		"default-domain:"+netConf.Project,
 		networkName,
 		subnet)
 	if err != nil {
@@ -79,7 +79,6 @@ func FloatingIpDelete(netConf *types.NetConf, name, networkName string) (string,
 		netConf,
 		"floating_ip_delete",
 		name,
-		"default-domain:"+netConf.Project,
 		networkName)
 	if err != nil {
 		return "", fmt.Errorf("Cannot delete floating IP '%s': %v: %s", name, err, string(output))
@@ -97,7 +96,6 @@ func FloatingIpGetVmiCount(netConf *types.NetConf, name, networkName string) (in
 		netConf,
 		"floating_ip_get_vmi_count",
 		name,
-		"default-domain:"+netConf.Project,
 		networkName)
 	if err != nil {
 		return 0, fmt.Errorf("Cannot get vmi count from floating IP '%s': %v: %s", name, err, string(output))
@@ -132,7 +130,6 @@ func FloatingIpDeleteVmi(netConf *types.NetConf, serviceName, networkName, vmiId
 		netConf,
 		"floating_ip_delete_vmi",
 		serviceName,
-		"default-domain:"+netConf.Project,
 		networkName,
 		vmiId)
 	if err != nil {
@@ -146,9 +143,7 @@ func FloatingIpDeleteVmi(netConf *types.NetConf, serviceName, networkName, vmiId
 func ProjectCreate(netConf *types.NetConf) (string, error) {
 	output, err := runControlCli(
 		netConf,
-		"project_create",
-		netConf.Project,
-		"default-domain")
+		"project_create")
 	if err != nil {
 		return "", fmt.Errorf("Cannot create project '%s': %v: %s", netConf.Project, err, string(output))
 	}
@@ -165,7 +160,6 @@ func ContainerCreate(netConf *types.NetConf, name, network string) (*types.Conta
 		netConf,
 		"container_create",
 		name,
-		"default-domain:"+netConf.Project,
 		network)
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -185,8 +179,7 @@ func ContainerDelete(netConf *types.NetConf, name string) (*types.ContainerData,
 	output, err := runControlCli(
 		netConf,
 		"container_delete",
-		name,
-		"default-domain:"+netConf.Project)
+		name)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"Cannot delete instance '%s'': %v: %s",
@@ -244,7 +237,6 @@ func PolicyCreate(netConf *types.NetConf, sourceNetwork, destNetwork string) (st
 	output, err := runControlCli(
 		netConf,
 		"policy_create",
-		"default-domain:"+netConf.Project,
 		sourceNetwork,
 		destNetwork)
 	if err != nil {
@@ -265,8 +257,6 @@ func VirtualDnsCreate(netConf *types.NetConf) (string, error) {
 		netConf,
 		"virtual_dns_create",
 		"default-dns",
-		"default-domain",
-		netConf.Project,
 		netConf.Domain)
 	if err != nil {
 		return "", fmt.Errorf(
@@ -331,7 +321,6 @@ func InstanceIpAddrAlloc(netConf *types.NetConf, network, subnet string) (*types
 	output, err := runControlCli(
 		netConf,
 		"instance_ip_alloc",
-		"default-domain:"+netConf.Project,
 		network,
 		subnet)
 	if err != nil {
@@ -352,7 +341,6 @@ func InstanceIpAddrFree(netConf *types.NetConf, network string, ip string) ([]by
 	output, err := runControlCli(
 		netConf,
 		"instance_ip_free",
-		"default-domain:"+netConf.Project,
 		network,
 		netConf.IPAM.Subnet,
 		ip)
