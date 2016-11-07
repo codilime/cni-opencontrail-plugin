@@ -58,11 +58,11 @@ func setupVeth(netns ns.NetNS, ifName string, mtu int) (string, error) {
 }
 
 func createService(netConf *types.NetConf, serviceName, serviceNetwork, subnet, vmi string) (string, error) {
-	_, err := contrail_cli.CreateVirtualNetwork(netConf, serviceNetwork, subnet)
+	_, err := contrail_cli.VirtualNetworkCreate(netConf, serviceNetwork, subnet)
 	if err != nil {
 		return "", err
 	}
-	fipId, ip, err := contrail_cli.CreateFloatingIp(
+	fipId, ip, err := contrail_cli.FloatingIpCreate(
 		netConf,
 		serviceName,
 		serviceNetwork,
@@ -70,19 +70,22 @@ func createService(netConf *types.NetConf, serviceName, serviceNetwork, subnet, 
 	if err != nil {
 		return "", err
 	}
-	contrail_cli.AddVmiToFloatingIp(netConf, fipId, vmi)
+	contrail_cli.FloatingIpAddVmi(netConf, fipId, vmi)
 	log.Printf("Floating IP %s with associated VMI %s created.\n", fipId, vmi)
 	return ip, nil
 }
 
 func deleteService(netConf *types.NetConf, serviceName, serviceNetwork, vmiName string) error {
-	err := contrail_cli.DeleteVmiFromFloatingIp(netConf, serviceName, serviceNetwork, vmiName)
+	err := contrail_cli.FloatingIpDeleteVmi(netConf, serviceName, serviceNetwork, vmiName)
 	if err != nil {
 		return err
 	}
-	_, err = contrail_cli.DeleteFloatingIpIfEmpty(netConf, serviceName, serviceNetwork)
-	if err != nil {
-		return err
+	vmiCount, err := contrail_cli.FloatingIpGetVmiCount(netConf, serviceName, serviceNetwork)
+	if vmiCount == 0 {
+		_, err = contrail_cli.FloatingIpDelete(netConf, serviceName, serviceNetwork)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -97,7 +100,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	// Create Project
-	projectId, err := contrail_cli.CreateProject(netConf)
+	projectId, err := contrail_cli.ProjectCreate(netConf)
 	if err != nil {
 		log.Print(err.Error())
 		return err
@@ -108,14 +111,14 @@ func cmdAdd(args *skel.CmdArgs) error {
 	log.Printf("Labels: %v\n", labels)
 
 	// Create virtual network
-	networkId, err := contrail_cli.CreateVirtualNetwork(netConf, labels.Network, netConf.PrivateSubnet)
+	networkId, err := contrail_cli.VirtualNetworkCreate(netConf, labels.Network, netConf.PrivateSubnet)
 	if err != nil {
 		log.Print(err.Error())
 		return err
 	}
 
 	// Create Conatiner
-	containerData, err := contrail_cli.CreateContainer(netConf, args.ContainerID, labels.Network)
+	containerData, err := contrail_cli.ContainerCreate(netConf, args.ContainerID, labels.Network)
 	if err != nil {
 		log.Print(err.Error())
 		return err
@@ -162,7 +165,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	// Assign IP to VMI
-	_, err = contrail_cli.CreateInstanceIp(
+	_, err = contrail_cli.InstanceIpCreate(
 		netConf,
 		args.ContainerID,
 		ipamResult.IP4.IP.IP.String(),
@@ -216,13 +219,13 @@ func cmdAdd(args *skel.CmdArgs) error {
 			return err
 		}
 
-		dnsId, err := contrail_cli.CreateVirtualDns(netConf)
+		dnsId, err := contrail_cli.VirtualDnsCreate(netConf)
 		if err != nil {
 			log.Print(err.Error())
 			return err
 		}
 
-		err = contrail_cli.CreateVirtualDnsRecord(netConf, dnsId, labels.Service, serviceIp)
+		err = contrail_cli.VirtualDnsRecordCreate(netConf, dnsId, labels.Service, serviceIp)
 		if err != nil {
 			log.Print(err.Error())
 			return err
@@ -230,7 +233,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 
 		// Create network policies
 		for _, service := range labels.Uses {
-			_, err = contrail_cli.CreatePolicy(netConf, "service-"+labels.Service, "service-"+service)
+			_, err = contrail_cli.PolicyCreate(netConf, "service-"+labels.Service, "service-"+service)
 			if err != nil {
 				log.Print(err.Error())
 				return err
@@ -285,7 +288,7 @@ func cmdDel(args *skel.CmdArgs) error {
 	}
 
 	// Delete InstanceIP
-	netConf.IPAM.IP, err = contrail_cli.DeleteInstanceIp(netConf, args.ContainerID)
+	netConf.IPAM.IP, err = contrail_cli.InstanceIpDelete(netConf, args.ContainerID)
 	if err != nil {
 		log.Print(err.Error())
 	}
@@ -311,7 +314,7 @@ func cmdDel(args *skel.CmdArgs) error {
 	}
 
 	// Delete Conatiner
-	containerData, err := contrail_cli.DeleteContainer(netConf, args.ContainerID)
+	containerData, err := contrail_cli.ContainerDelete(netConf, args.ContainerID)
 	if err != nil {
 		log.Print(err.Error())
 	}

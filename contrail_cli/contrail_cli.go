@@ -10,8 +10,9 @@ import (
 )
 
 type response struct {
-	UUID string `json:"uuid"`
-	IP   string `json:"ip"`
+	UUID  string `json:"uuid"`
+	IP    string `json:"ip"`
+	Count int    `json:"count"`
 }
 
 func runControlCli(netConf *types.NetConf, args ...string) ([]byte, error) {
@@ -36,7 +37,7 @@ func runVrouterCli(netConf *types.NetConf, args ...string) ([]byte, error) {
 	return out, err
 }
 
-func CreateVirtualNetwork(netConf *types.NetConf, name string, subnet string) (string, error) {
+func VirtualNetworkCreate(netConf *types.NetConf, name string, subnet string) (string, error) {
 	output, err := runControlCli(
 		netConf,
 		"network_create",
@@ -54,7 +55,7 @@ func CreateVirtualNetwork(netConf *types.NetConf, name string, subnet string) (s
 	return data.UUID, nil
 }
 
-func CreateFloatingIp(netConf *types.NetConf, name, networkName, subnet string) (string, string, error) {
+func FloatingIpCreate(netConf *types.NetConf, name, networkName, subnet string) (string, string, error) {
 	output, err := runControlCli(
 		netConf,
 		"floating_ip_create",
@@ -73,10 +74,10 @@ func CreateFloatingIp(netConf *types.NetConf, name, networkName, subnet string) 
 	return data.UUID, data.IP, nil
 }
 
-func DeleteFloatingIpIfEmpty(netConf *types.NetConf, name, networkName string) (string, error) {
+func FloatingIpDelete(netConf *types.NetConf, name, networkName string) (string, error) {
 	output, err := runControlCli(
 		netConf,
-		"floating_ip_delete_if_empty",
+		"floating_ip_delete",
 		name,
 		"default-domain:"+netConf.Project,
 		networkName)
@@ -91,7 +92,25 @@ func DeleteFloatingIpIfEmpty(netConf *types.NetConf, name, networkName string) (
 	return data.IP, nil
 }
 
-func AddVmiToFloatingIp(netConf *types.NetConf, fipId, vmiId string) error {
+func FloatingIpGetVmiCount(netConf *types.NetConf, name, networkName string) (int, error) {
+	output, err := runControlCli(
+		netConf,
+		"floating_ip_get_vmi_count",
+		name,
+		"default-domain:"+netConf.Project,
+		networkName)
+	if err != nil {
+		return 0, fmt.Errorf("Cannot get vmi count from floating IP '%s': %v: %s", name, err, string(output))
+	}
+	data := &response{}
+	err = json.Unmarshal(output, data)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse response from contrail_cli.py: %v: %s", err, string(output))
+	}
+	return data.Count, nil
+}
+
+func FloatingIpAddVmi(netConf *types.NetConf, fipId, vmiId string) error {
 	output, err := runControlCli(
 		netConf,
 		"floating_ip_add_vmi",
@@ -108,7 +127,7 @@ func AddVmiToFloatingIp(netConf *types.NetConf, fipId, vmiId string) error {
 	return nil
 }
 
-func DeleteVmiFromFloatingIp(netConf *types.NetConf, serviceName, networkName, vmiId string) error {
+func FloatingIpDeleteVmi(netConf *types.NetConf, serviceName, networkName, vmiId string) error {
 	output, err := runControlCli(
 		netConf,
 		"floating_ip_delete_vmi",
@@ -124,7 +143,7 @@ func DeleteVmiFromFloatingIp(netConf *types.NetConf, serviceName, networkName, v
 	return nil
 }
 
-func CreateProject(netConf *types.NetConf) (string, error) {
+func ProjectCreate(netConf *types.NetConf) (string, error) {
 	output, err := runControlCli(
 		netConf,
 		"project_create",
@@ -141,7 +160,7 @@ func CreateProject(netConf *types.NetConf) (string, error) {
 	return data.UUID, nil
 }
 
-func CreateContainer(netConf *types.NetConf, name, network string) (*types.ContainerData, error) {
+func ContainerCreate(netConf *types.NetConf, name, network string) (*types.ContainerData, error) {
 	output, err := runControlCli(
 		netConf,
 		"container_create",
@@ -162,7 +181,7 @@ func CreateContainer(netConf *types.NetConf, name, network string) (*types.Conta
 	return data, nil
 }
 
-func DeleteContainer(netConf *types.NetConf, name string) (*types.ContainerData, error) {
+func ContainerDelete(netConf *types.NetConf, name string) (*types.ContainerData, error) {
 	output, err := runControlCli(
 		netConf,
 		"container_delete",
@@ -182,7 +201,7 @@ func DeleteContainer(netConf *types.NetConf, name string) (*types.ContainerData,
 	return data, nil
 }
 
-func CreateInstanceIp(netConf *types.NetConf, name, ip, networkId, vmiId string) (string, error) {
+func InstanceIpCreate(netConf *types.NetConf, name, ip, networkId, vmiId string) (string, error) {
 	output, err := runControlCli(
 		netConf,
 		"instance_ip_create",
@@ -203,7 +222,7 @@ func CreateInstanceIp(netConf *types.NetConf, name, ip, networkId, vmiId string)
 	return data.UUID, nil
 }
 
-func DeleteInstanceIp(netConf *types.NetConf, name string) (string, error) {
+func InstanceIpDelete(netConf *types.NetConf, name string) (string, error) {
 	output, err := runControlCli(
 		netConf,
 		"instance_ip_delete",
@@ -221,10 +240,10 @@ func DeleteInstanceIp(netConf *types.NetConf, name string) (string, error) {
 	return data.IP, nil
 }
 
-func CreatePolicy(netConf *types.NetConf, sourceNetwork, destNetwork string) (string, error) {
+func PolicyCreate(netConf *types.NetConf, sourceNetwork, destNetwork string) (string, error) {
 	output, err := runControlCli(
 		netConf,
-		"create_policy",
+		"policy_create",
 		"default-domain:"+netConf.Project,
 		sourceNetwork,
 		destNetwork)
@@ -241,10 +260,10 @@ func CreatePolicy(netConf *types.NetConf, sourceNetwork, destNetwork string) (st
 	return data.UUID, nil
 }
 
-func CreateVirtualDns(netConf *types.NetConf) (string, error) {
+func VirtualDnsCreate(netConf *types.NetConf) (string, error) {
 	output, err := runControlCli(
 		netConf,
-		"create_virtual_dns",
+		"virtual_dns_create",
 		"default-dns",
 		"default-domain",
 		netConf.Project,
@@ -261,10 +280,10 @@ func CreateVirtualDns(netConf *types.NetConf) (string, error) {
 	return data.UUID, nil
 }
 
-func CreateVirtualDnsRecord(netConf *types.NetConf, dnsId, name, ip string) error {
+func VirtualDnsRecordCreate(netConf *types.NetConf, dnsId, name, ip string) error {
 	output, err := runControlCli(
 		netConf,
-		"create_virtual_dns_record",
+		"virtual_dns_record_create",
 		name,
 		ip,
 		dnsId)
@@ -308,7 +327,7 @@ func VrouterDelPort(netConf *types.NetConf, interfaceId string) error {
 	return nil
 }
 
-func AllocIpAddress(netConf *types.NetConf, network, subnet string) (*types.IpData, error) {
+func InstanceIpAddrAlloc(netConf *types.NetConf, network, subnet string) (*types.IpData, error) {
 	output, err := runControlCli(
 		netConf,
 		"instance_ip_alloc",
@@ -329,7 +348,7 @@ func AllocIpAddress(netConf *types.NetConf, network, subnet string) (*types.IpDa
 	return data, nil
 }
 
-func FreeIpAddress(netConf *types.NetConf, network string, ip string) ([]byte, error) {
+func InstanceIpAddrFree(netConf *types.NetConf, network string, ip string) ([]byte, error) {
 	output, err := runControlCli(
 		netConf,
 		"instance_ip_free",

@@ -144,11 +144,20 @@ class ContrailCli:
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
-    def control_floating_ip_delete_if_empty(self, name, project_fqname, network_name):
+    def control_floating_ip_get_vmi_count(self, name, project_fqname, network_name):
         fip = self.api.floating_ip_read(fq_name=fqname(project_fqname, network_name, network_name, name))
         vmi_refs = fip.get_virtual_machine_interface_refs()
-        if vmi_refs is None or len(vmi_refs) == 0:
-            self.api.floating_ip_delete(id=fip.uuid)
+        count = 0
+        if vmi_refs is not None:
+            count = len(vmi_refs)
+        ret = {
+            'count': count
+        }
+        print json.dumps(ret, indent=4, separators=(',', ': '))
+
+    def control_floating_ip_delete(self, name, project_fqname, network_name):
+        fip = self.api.floating_ip_read(fq_name=fqname(project_fqname, network_name, network_name, name))
+        self.api.floating_ip_delete(id=fip.uuid)
         ret = {
             'ip': fip.floating_ip_address,
         }
@@ -235,7 +244,7 @@ class ContrailCli:
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
    
-    def control_create_policy(self, project_fqname, src, dst):
+    def control_policy_create(self, project_fqname, src, dst):
         src_network = self._object_read("virtual_network", fqname=fqname(project_fqname, src))
         dst_network = self._object_read("virtual_network", fqname=fqname(project_fqname, dst))
         project = self._object_read("project", fqname_str=project_fqname)
@@ -265,7 +274,7 @@ class ContrailCli:
         }
         print json.dumps(ret, indent=4, separators=(',', ': '))
 
-    def control_create_virtual_dns(self, name, domain_fqname, project_name, domain_name):
+    def control_virtual_dns_create(self, name, domain_fqname, project_name, domain_name):
         domain = self._object_read("domain", fqname_str=domain_fqname)
         dns_type = VirtualDnsType(
                 domain_name=domain_name,
@@ -286,7 +295,7 @@ class ContrailCli:
         }
         print json.dumps(ret, indent=4, separators=(',', ': ')) 
 
-    def control_create_virtual_dns_record(self, name, ip, dns_uuid):
+    def control_virtual_dns_record_create(self, name, ip, dns_uuid):
         dns = self._object_read("virtual_DNS", id=dns_uuid)
         data = VirtualDnsRecordType(name, "A", "IN", ip, 86400)
         record = VirtualDnsRecord(name, dns, data)
