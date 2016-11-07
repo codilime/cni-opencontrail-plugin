@@ -284,6 +284,19 @@ func VirtualDnsRecordCreate(netConf *types.NetConf, dnsId, name, ip string) erro
 	return nil
 }
 
+func VirtualDnsRecordDelete(netConf *types.NetConf, name string) error {
+	output, err := runControlCli(
+		netConf,
+		"virtual_dns_record_delete",
+		name,
+		"default-dns")
+	if err != nil {
+		return fmt.Errorf(
+			"Cannot delete virtual DNS record '%s': %v: %s", name, err, string(output))
+	}
+	return nil
+}
+
 func VrouterAddPort(
 	netConf *types.NetConf,
 	name string,

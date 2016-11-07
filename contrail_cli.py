@@ -311,6 +311,10 @@ class ContrailCli:
         data = VirtualDnsRecordType(name, "A", "IN", ip, 86400)
         record = VirtualDnsRecord(name, dns, data)
         uuid = self._object_create("virtual_DNS_record", record)
+    
+    def control_virtual_dns_record_delete(self, name, dns_name):
+        record = self._object_read("virtual_DNS_record", fqname=[self.domain, dns_name, name])
+        self.api.virtual_DNS_record_delete(id=record.uuid)
 
     def vrouter_port_add(self, name, project_uuid, vn_uuid, vm_uuid, vif_uuid, iface_name, mac, ip):
         result = self.api.add_port(
